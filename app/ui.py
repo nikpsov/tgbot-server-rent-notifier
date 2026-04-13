@@ -17,6 +17,7 @@ MAIN_MENU_BUTTONS = [
 
 CANCEL_BUTTON = "❌ Отмена"
 BACK_BUTTON = "⬅️ Назад"
+SKIP_BUTTON = "⏭️ Пропустить"
 
 
 def main_menu_keyboard() -> types.ReplyKeyboardMarkup:
@@ -29,6 +30,13 @@ def main_menu_keyboard() -> types.ReplyKeyboardMarkup:
 
 def cancel_keyboard() -> types.ReplyKeyboardMarkup:
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    kb.row(BACK_BUTTON, CANCEL_BUTTON)
+    return kb
+
+
+def skip_keyboard() -> types.ReplyKeyboardMarkup:
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    kb.row(SKIP_BUTTON)
     kb.row(BACK_BUTTON, CANCEL_BUTTON)
     return kb
 
@@ -101,10 +109,12 @@ def help_text() -> str:
         "Используйте кнопки главного меню для управления ботом.\n"
         "Команды для совместимости:\n"
         "<code>/start</code> <code>/list</code> <code>/add</code> "
-        "<code>/delete &lt;id&gt;</code> <code>/register</code>\n\n"
+        "<code>/delete &lt;id&gt;</code> <code>/register</code> "
+        "<code>/register &lt;chat_id|@username&gt;</code>\n\n"
         "Чтобы подключить группу или канал для уведомлений:\n"
         "1. Добавьте бота в чат или канал\n"
-        "2. Отправьте там <code>/register</code>"
+        "2. Отправьте там <code>/register</code>\n"
+        "3. Либо добавьте получателя из лички через <code>/register &lt;chat_id|@username&gt;</code>"
     )
 
 
