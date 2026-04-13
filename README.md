@@ -1,164 +1,142 @@
-# Lightweight ServerPayBot
+# Server Rent Notifier Bot
 
-Легковесный Telegram-бот для учета арендованных серверов и напоминаний о платежах.
+Telegram-бот для учёта арендованных серверов и напоминаний об оплате.
 
-- Хранение данных: локальный `data/servers.json`
-- Интерфейс: Telegram-команды + inline-кнопки
-- Планировщик: ежедневная проверка в `09:00` (по `TZ`)
-- Режим доступа: только `ADMIN_CHAT_ID`
+Теперь бот поддерживает:
+
+- отправку уведомлений в личку, группу и канал;
+- несколько администраторов;
+- кнопочное меню вместо простого списка команд;
+- редактирование серверов прямо из карточки;
+- дату последнего уведомления, чтобы рестарт не дублировал уже отправленное напоминание.
 
 ## Возможности
 
-- `/start` - справка по командам
-- `/add` - пошаговое добавление сервера
-- `/list` - список серверов с кнопками:
-  - `✅ Отметить как оплаченный`
-  - `🗑 Удалить`
-- `/delete <id>` - удаление по ID
+- `➕ Добавить сервер` через пошаговый wizard
+- `📋 Список серверов` с карточками и inline-кнопками
+- `✅ Оплачено` для продления следующей даты оплаты
+- `✏️ Редактировать` для изменения имени, IP, даты, периода и reminder
+- `🗑 Удалить` для удаления сервера
+- `🔔 Получатели` для просмотра и удаления чатов/каналов-получателей
+- `👥 Админы` для просмотра администраторов и добавления новых owner'ом
+- `/register` в нужном чате или канале для подключения уведомлений
 
-Логика оплаты:
+## Команды
 
-- `monthly` = `+30` дней
-- `custom` = `+custom_days`
-- продление идет от текущего `next_payment_date`, а не от сегодняшней даты
+- `/start` - открыть главное меню
+- `/help` - показать справку
+- `/list` - показать список серверов
+- `/add` - запустить добавление сервера
+- `/delete <id>` - удалить сервер по id
+- `/register` - зарегистрировать текущий чат/канал как получателя уведомлений
 
-## Требования
+## Переменные окружения
 
-- Python `3.11+` (для локального запуска)
-- или Docker + Docker Compose (для контейнера)
+- `BOT_TOKEN` - токен Telegram-бота
+- `OWNER_CHAT_ID` - chat id владельца бота
+- `TZ` - таймзона процесса, по умолчанию `Europe/Moscow`
 
-## Быстрый старт (Docker Compose)
+## Как подключить чат или канал
 
-1. Клонируйте репозиторий:
+1. Добавьте бота в нужный чат или канал.
+2. Если это канал, выдайте боту право писать сообщения.
+3. Отправьте в этом чате или канале `/register`.
+4. Чат появится в разделе `🔔 Получатели`.
 
-```bash
-git clone https://github.com/nikpsov/tgbot-server-rent-notifier.git
-cd tgbot-server-rent-notifier
+## Формат данных
+
+Новый `data/servers.json` хранит общее состояние:
+
+```json
+{
+  "admins": [123456789, 987654321],
+  "recipients": [
+    {
+      "chat_id": 123456789,
+      "type": "private",
+      "title": "Owner"
+    },
+    {
+      "chat_id": -1001234567890,
+      "type": "supergroup",
+      "title": "Infra Alerts"
+    }
+  ],
+  "servers": {
+    "server_1": {
+      "name": "vpn.mydomain.com",
+      "ip_address": "192.168.1.15",
+      "next_payment_date": "01.05.2026",
+      "period_type": "monthly",
+      "custom_days": null,
+      "reminder_days": 5,
+      "last_notified_on": "14.04.2026"
+    }
+  }
+}
 ```
 
-2. Создайте `.env` в корне проекта:
+## Логика уведомлений
+
+- Ежедневно в `09:00` по `TZ` бот проверяет все серверы.
+- Если `today + reminder_days >= next_payment_date`, бот рассылает уведомление всем получателям.
+- После отправки бот пишет дату в `last_notified_on`, поэтому повторный рестарт в тот же день не шлёт дубликат.
+- Если получателей нет, owner получает fallback-сообщение с подсказкой использовать `/register`.
+- После кнопки `✅ Оплачено` дата сдвигается:
+- `monthly` = `+30` дней
+- `custom` = `+custom_days`
+
+## Запуск через Docker Compose
+
+1. Создайте `.env`:
 
 ```env
 BOT_TOKEN=123456:telegram_bot_token
-ADMIN_CHAT_ID=123456789
+OWNER_CHAT_ID=123456789
 TZ=Europe/Moscow
 ```
 
-3. Запустите контейнер:
+2. Запустите контейнер:
 
 ```bash
 docker compose up -d --build
 ```
 
-4. Проверьте логи:
+3. Проверьте логи:
 
 ```bash
 docker compose logs -f bot
 ```
 
-5. Остановить:
-
-```bash
-docker compose down
-```
-
-Данные сохраняются в `./data/servers.json` (volume `./data:/app/data`).
-
-## Локальный запуск (без Docker)
-
-1. Установите зависимости:
+## Локальный запуск
 
 ```bash
 python -m venv .venv
-# Linux/Mac
-source .venv/bin/activate
-# Windows PowerShell
-# .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-```
-
-2. Установите переменные окружения:
-
-```bash
-# Linux/Mac
-export BOT_TOKEN=123456:telegram_bot_token
-export ADMIN_CHAT_ID=123456789
-export TZ=Europe/Moscow
-```
-
-```powershell
-# Windows PowerShell
-$env:BOT_TOKEN="123456:telegram_bot_token"
-$env:ADMIN_CHAT_ID="123456789"
-$env:TZ="Europe/Moscow"
-```
-
-3. Запустите:
-
-```bash
 python bot.py
 ```
 
-## Формат данных
+Для PowerShell:
 
-Файл `data/servers.json`:
-
-```json
-{
-  "server_1": {
-    "name": "vpn.mydomain.com",
-    "ip_address": "192.168.1.15",
-    "next_payment_date": "2026-05-01",
-    "period_type": "monthly",
-    "custom_days": null,
-    "reminder_days": 5
-  },
-  "server_2": {
-    "name": "Storage Hetzner",
-    "ip_address": "",
-    "next_payment_date": "2026-12-15",
-    "period_type": "custom",
-    "custom_days": 45,
-    "reminder_days": 5
-  }
-}
+```powershell
+.venv\Scripts\Activate.ps1
+$env:BOT_TOKEN="123456:telegram_bot_token"
+$env:OWNER_CHAT_ID="123456789"
+$env:TZ="Europe/Moscow"
+python bot.py
 ```
-
-## Пошаговый сценарий `/add`
-
-Бот запрашивает поля в таком порядке:
-
-1. `name`
-2. `ip_address` (`-` чтобы пропустить)
-3. `next_payment_date` (`YYYY-MM-DD`)
-4. `period_type` (`monthly` или `custom`)
-5. `custom_days` (только для `custom`)
-6. `reminder_days` (`-` = дефолт `5`)
-
-## Уведомления и планировщик
-
-- Ежедневно в `09:00` по `TZ` бот проверяет все записи.
-- Если `today + reminder_days >= next_payment_date`, бот отправляет напоминание.
-- Напоминания отправляются ежедневно до нажатия кнопки `✅ Отметить как оплаченный`.
-
-## Переменные окружения
-
-- `BOT_TOKEN` - токен Telegram-бота (обязательно)
-- `ADMIN_CHAT_ID` - chat id администратора (обязательно)
-- `TZ` - таймзона процесса (необязательно, дефолт `Europe/Moscow`)
 
 ## Структура проекта
 
 ```text
 .
-├── bot.py
-├── requirements.txt
-├── Dockerfile
-├── docker-compose.yml
-└── data/
-    └── servers.json
+|-- bot.py
+|-- app/
+|   |-- bot_app.py
+|   |-- config.py
+|   |-- services.py
+|   |-- storage.py
+|   `-- ui.py
+`-- data/
+    `-- servers.json
 ```
-
-## Резервное копирование
-
-Бэкап и перенос максимально простые: достаточно сохранить `data/servers.json`.
