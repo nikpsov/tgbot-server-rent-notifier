@@ -7,7 +7,7 @@ services:
     restart: unless-stopped
     environment:
       BOT_TOKEN: ${BOT_TOKEN}
-      ADMIN_CHAT_ID: ${ADMIN_CHAT_ID}
+      OWNER_CHAT_ID: ${OWNER_CHAT_ID}
       TZ: ${TZ:-Europe/Moscow}
     volumes:
       - ./data:/app/data

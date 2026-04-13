@@ -9,6 +9,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY bot.py .
+COPY app ./app
 COPY data ./data
 
 CMD ["python", "bot.py"]
