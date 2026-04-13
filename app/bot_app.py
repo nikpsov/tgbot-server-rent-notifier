@@ -23,6 +23,7 @@ from app.ui import (
     BACK_BUTTON,
     CANCEL_BUTTON,
     MAIN_MENU_BUTTONS,
+    SKIP_BUTTON,
     admins_keyboard,
     admins_manage_keyboard,
     cancel_keyboard,
@@ -37,6 +38,7 @@ from app.ui import (
     server_keyboard,
     server_text,
     settings_text,
+    skip_keyboard,
 )
 
 
@@ -216,18 +218,50 @@ class RentNotifierBot:
         if self.reject_non_admin(message):
             return
         state = self.state()
+        parts = (message.text or "").split(maxsplit=1)
+        if len(parts) == 1:
+            target_chat = message.chat
+        else:
+            target_chat = self.resolve_chat_reference(parts[1].strip())
+            if target_chat is None:
+                self.send_html(
+                    message.chat.id,
+                    "⚠️ Не удалось найти получателя. Используйте <code>chat_id</code> или <code>@username</code>, который видит бот.",
+                    reply_markup=main_menu_keyboard() if message.chat.type == "private" else None,
+                )
+                return
+
         recipient = {
-            "chat_id": int(message.chat.id),
-            "type": str(message.chat.type),
-            "title": self.chat_title(message.chat),
+            "chat_id": int(target_chat.id),
+            "type": str(target_chat.type),
+            "title": self.chat_title(target_chat),
         }
         state["recipients"] = [item for item in state["recipients"] if int(item["chat_id"]) != recipient["chat_id"]]
         state["recipients"].append(recipient)
         self.save_state(state)
         self.send_html(
             message.chat.id,
-            "🔔 Этот чат подключён к уведомлениям.\n\nНапоминания об оплате будут приходить сюда автоматически.",
+            "🔔 Получатель подключён к уведомлениям.\n\n"
+            f"{recipient_title(recipient)}\n\n"
+            "Напоминания об оплате будут приходить сюда автоматически.",
+            reply_markup=main_menu_keyboard() if message.chat.type == "private" else None,
         )
+
+    def resolve_chat_reference(self, value: str) -> types.Chat | None:
+        if not value:
+            return None
+        target: str | int
+        try:
+            target = int(value)
+        except ValueError:
+            if not value.startswith("@") or len(value) == 1:
+                return None
+            target = value
+        try:
+            return self.bot.get_chat(target)
+        except Exception as exc:
+            self.logger.warning("Failed to resolve chat reference %s: %s", value, exc)
+            return None
 
     def chat_title(self, chat: types.Chat) -> str:
         if chat.type == "private":
@@ -239,7 +273,6 @@ class RentNotifierBot:
         if message.chat.type != "private":
             return
         text = (message.text or "").strip()
-
         if text == "❓ Помощь":
             self.handle_help(message)
             return
@@ -276,7 +309,7 @@ class RentNotifierBot:
                 "1. Добавьте бота в нужный чат или канал.\n"
                 "2. Выдайте право писать сообщения, если это канал.\n"
                 "3. Отправьте там <code>/register</code>.\n\n"
-                "После этого чат появится в списке получателей.",
+                "Либо добавьте получателя из лички: <code>/register &lt;chat_id|@username&gt;</code>.",
                 reply_markup=recipients_keyboard(),
             )
             return
@@ -327,18 +360,19 @@ class RentNotifierBot:
         if session.flow == "add":
             prompts = {
                 "name": "➕ <b>Новый сервер</b>\n\nВведите имя сервера.",
-                "ip_address": "🌐 Введите IP или <code>-</code>, чтобы пропустить.",
+                "ip_address": "🌐 Введите IP или нажмите кнопку пропуска.",
                 "next_payment_date": "📆 Введите дату следующей оплаты в формате <code>dd.mm.yyyy</code>.",
                 "custom_days": "🧮 Введите количество дней для кастомного периода.",
                 "reminder_days": (
-                    f"🔔 Введите количество дней напоминания или <code>-</code> для значения "
-                    f"по умолчанию ({DEFAULT_REMINDER_DAYS})."
+                    f"🔔 Введите количество дней напоминания или нажмите кнопку пропуска "
+                    f"для значения по умолчанию ({DEFAULT_REMINDER_DAYS})."
                 ),
             }
             if session.step == "period_type":
                 self.send_html(chat_id, "⏱ Выберите тип периода.", reply_markup=period_keyboard())
                 return
-            self.send_html(chat_id, prompts[session.step], reply_markup=cancel_keyboard())
+            reply_markup = skip_keyboard() if session.step in {"ip_address", "reminder_days"} else cancel_keyboard()
+            self.send_html(chat_id, prompts[session.step], reply_markup=reply_markup)
             return
 
         if session.flow == "edit":
@@ -379,7 +413,7 @@ class RentNotifierBot:
             return
         if session.step == "ip_address":
             self.push_history(session)
-            session.payload["ip_address"] = "" if text in {"", "-"} else text
+            session.payload["ip_address"] = "" if text in {"", "-", SKIP_BUTTON} else text
             session.step = "next_payment_date"
             self.prompt_current_step(message.chat.id, session)
             return
@@ -411,12 +445,12 @@ class RentNotifierBot:
             self.prompt_current_step(message.chat.id, session)
             return
         if session.step == "reminder_days":
-            if text in {"", "-"}:
+            if text in {"", "-", SKIP_BUTTON}:
                 reminder_days = DEFAULT_REMINDER_DAYS
             elif text.isdigit() and int(text) >= 0:
                 reminder_days = int(text)
             else:
-                self.send_html(message.chat.id, "Введите число 0 или больше, либо <code>-</code>.")
+                self.send_html(message.chat.id, "Введите число 0 или больше, либо нажмите кнопку пропуска.")
                 return
             session.payload["reminder_days"] = reminder_days
             if session.payload.get("period_type") == "monthly":
@@ -610,7 +644,9 @@ class RentNotifierBot:
         state = self.state()
         self.send_html(
             message.chat.id,
-            "🔔 <b>Получатели уведомлений</b>\n\nДобавление делается командой <code>/register</code> в нужном чате или канале.",
+            "🔔 <b>Получатели уведомлений</b>\n\n"
+            "Добавление работает командой <code>/register</code> в нужном чате или канале, "
+            "либо через <code>/register &lt;chat_id|@username&gt;</code> из лички.",
             reply_markup=recipients_keyboard(),
         )
         if not state["recipients"]:
@@ -713,7 +749,7 @@ class RentNotifierBot:
         if not state["recipients"]:
             self.send_html(
                 self.settings.owner_chat_id,
-                "⚠️ Получатели уведомлений не настроены. Подключите чат или канал через <code>/register</code>.",
+                "⚠️ Получатели уведомлений не настроены. Подключите чат или канал через <code>/register</code> или <code>/register &lt;chat_id|@username&gt;</code>.",
             )
             return
 
