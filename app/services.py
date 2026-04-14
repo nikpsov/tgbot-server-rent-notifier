@@ -1,4 +1,5 @@
 ﻿import datetime as dt
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 DATE_FMT = "%d.%m.%Y"
@@ -38,26 +39,17 @@ def calculate_next_date(server: dict[str, Any]) -> str:
     period_type = server.get("period_type")
     if period_type == "monthly":
         new_date = base_date + dt.timedelta(days=30)
+    elif period_type == "daily":
+        new_date = base_date + dt.timedelta(days=1)
     else:
-        custom_days = int(server.get("custom_days") or 0)
-        if custom_days <= 0:
-            raise ValueError("custom_days must be > 0")
-        new_date = base_date + dt.timedelta(days=custom_days)
+        raise ValueError("period_type must be monthly or daily")
     return new_date.strftime(DATE_FMT)
 
 
 def normalize_server_payload(payload: dict[str, Any]) -> dict[str, Any]:
     period_type = payload.get("period_type", "monthly")
-    if period_type not in {"monthly", "custom"}:
+    if period_type not in {"monthly", "daily"}:
         period_type = "monthly"
-
-    custom_days = payload.get("custom_days")
-    if period_type == "custom":
-        custom_days = int(custom_days)
-        if custom_days <= 0:
-            raise ValueError("custom_days must be > 0")
-    else:
-        custom_days = None
 
     reminder_days = int(payload.get("reminder_days", DEFAULT_REMINDER_DAYS))
     if reminder_days < 0:
@@ -72,14 +64,17 @@ def normalize_server_payload(payload: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("name is empty")
 
     payment_amount = str(payload.get("payment_amount") or "").strip()
+    lk_balance = str(payload.get("lk_balance") or "").strip()
+    lk_topup_url = str(payload.get("lk_topup_url") or "").strip()
 
     return {
         "name": name,
         "ip_address": str(payload.get("ip_address") or "").strip(),
         "payment_amount": payment_amount,
+        "lk_balance": lk_balance,
+        "lk_topup_url": lk_topup_url,
         "next_payment_date": next_payment_date,
         "period_type": period_type,
-        "custom_days": custom_days,
         "reminder_days": reminder_days,
         "last_notified_on": str(payload.get("last_notified_on") or ""),
     }
@@ -94,3 +89,39 @@ def due_for_reminder(server: dict[str, Any], today: dt.date) -> bool:
     if last_notified_on == today:
         return False
     return today + dt.timedelta(days=reminder_days) >= due_date
+
+
+def parse_decimal_value(raw: Any) -> Decimal | None:
+    text = str(raw or "").strip().replace(",", ".")
+    if not text:
+        return None
+    try:
+        value = Decimal(text)
+    except InvalidOperation:
+        return None
+    if value < 0:
+        return None
+    return value
+
+
+def balance_coverage_until(server: dict[str, Any], today: dt.date | None = None) -> dt.date | None:
+    current_day = today or dt.date.today()
+    balance = parse_decimal_value(server.get("lk_balance"))
+    amount = parse_decimal_value(server.get("payment_amount"))
+    period_type = str(server.get("period_type") or "monthly")
+    if balance is None or amount is None or amount <= 0:
+        return None
+
+    if period_type == "daily":
+        paid_days = int(balance // amount)
+        return current_day + dt.timedelta(days=paid_days - 1)
+
+    due_date = parse_date(str(server.get("next_payment_date", "")))
+    if not due_date:
+        return None
+    next_charge = due_date
+    remainder = balance
+    while remainder >= amount:
+        remainder -= amount
+        next_charge += dt.timedelta(days=30)
+    return next_charge - dt.timedelta(days=1)

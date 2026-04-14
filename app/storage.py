@@ -35,20 +35,8 @@ class Storage:
 
     def _normalize_server(self, server: dict[str, Any]) -> dict[str, Any]:
         period_type = server.get("period_type")
-        if period_type not in {"monthly", "custom"}:
+        if period_type not in {"monthly", "daily"}:
             period_type = "monthly"
-
-        custom_days = server.get("custom_days")
-        if period_type == "custom":
-            try:
-                custom_days_int = int(custom_days)
-                if custom_days_int <= 0:
-                    custom_days_int = 30
-            except (TypeError, ValueError):
-                custom_days_int = 30
-            custom_days = custom_days_int
-        else:
-            custom_days = None
 
         try:
             reminder_days = int(server.get("reminder_days", DEFAULT_REMINDER_DAYS))
@@ -61,9 +49,10 @@ class Storage:
             "name": str(server.get("name") or "Unnamed server"),
             "ip_address": str(server.get("ip_address") or ""),
             "payment_amount": str(server.get("payment_amount") or "").strip(),
+            "lk_balance": str(server.get("lk_balance") or "").strip(),
+            "lk_topup_url": str(server.get("lk_topup_url") or "").strip(),
             "next_payment_date": str(server.get("next_payment_date") or ""),
             "period_type": period_type,
-            "custom_days": custom_days,
             "reminder_days": reminder_days,
             "last_notified_on": str(server.get("last_notified_on") or ""),
         }
