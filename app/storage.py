@@ -40,6 +40,7 @@ class Storage:
 
         normalized = {
             "name": str(server.get("name") or "Unnamed server"),
+            "hosting_name": str(server.get("hosting_name") or "").strip(),
             "ip_address": str(server.get("ip_address") or ""),
             "period_type": period_type,
             "payment_amount": str(server.get("payment_amount") or "").strip(),
@@ -97,6 +98,8 @@ class Storage:
                 reminder_days = DEFAULT_REMINDER_DAYS
         except (TypeError, ValueError):
             reminder_days = DEFAULT_REMINDER_DAYS
+        reminder_time = str(raw.get("reminder_time") or "09:00").strip() or "09:00"
+        reminder_timezone = str(raw.get("reminder_timezone") or "Europe/Moscow").strip() or "Europe/Moscow"
 
         servers: dict[str, Any] = {}
         raw_servers = raw.get("servers")
@@ -110,5 +113,7 @@ class Storage:
             "admins": self._normalize_admins(raw.get("admins")),
             "recipients": self._normalize_recipients(raw.get("recipients")),
             "reminder_days": reminder_days,
+            "reminder_time": reminder_time,
+            "reminder_timezone": reminder_timezone,
             "servers": servers,
         }

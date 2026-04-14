@@ -84,7 +84,8 @@ def delete_confirm_keyboard(server_id: str) -> types.InlineKeyboardMarkup:
 
 def server_edit_keyboard(server_id: str) -> types.ReplyKeyboardMarkup:
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    kb.row(f"✏️ Имя ({server_id})", f"🌐 IP ({server_id})")
+    kb.row(f"✏️ Имя ({server_id})", f"🏢 Хостинг ({server_id})")
+    kb.row(f"🌐 IP ({server_id})")
     kb.row(f"📆 Дата оплаты ({server_id})", f"⏱ Период ({server_id})")
     kb.row(f"💰 Сумма списания ({server_id})", f"🏦 Баланс ЛК ({server_id})")
     kb.row(f"🔗 Ссылка ЛК ({server_id})")
@@ -123,16 +124,18 @@ def help_text() -> str:
 
 def settings_keyboard() -> types.ReplyKeyboardMarkup:
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    kb.row("🔔 Общее напоминание")
+    kb.row("🔔 Настройки напоминаний")
     kb.row(BACK_BUTTON, CANCEL_BUTTON)
     return kb
 
 
-def settings_text(owner_id: int, reminder_days: int) -> str:
+def settings_text(owner_id: int, reminder_days: int, reminder_time: str, reminder_timezone: str) -> str:
     return (
         "⚙️ <b>Настройки</b>\n\n"
         f"Owner ID: <code>{owner_id}</code>\n"
         f"Общее напоминание: <code>{reminder_days}</code> дн.\n"
+        f"Время уведомлений: <code>{escape(reminder_time)}</code>\n"
+        f"Таймзона уведомлений: <code>{escape(reminder_timezone)}</code>\n"
         "Доступ к управлению есть у owner и администраторов."
     )
 
@@ -178,6 +181,10 @@ def server_text(server_id: str, server: dict[str, Any]) -> str:
     name_raw = str(server.get("name") or "").strip()
     if name_raw:
         lines.append(f"• Имя: <b>{escape(name_raw)}</b>")
+
+    hosting_raw = str(server.get("hosting_name") or "").strip()
+    if hosting_raw:
+        lines.append(f"• Хостинг: <b>{escape(hosting_raw)}</b>")
 
     ip_raw = str(server.get("ip_address") or "").strip()
     if ip_raw:

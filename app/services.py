@@ -1,4 +1,5 @@
 ﻿import datetime as dt
+import re
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -51,9 +52,12 @@ def normalize_server_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if period_type not in {"monthly", "daily"}:
         period_type = "monthly"
 
-    next_payment_date = str(payload.get("next_payment_date", ""))
-    if not parse_date(next_payment_date):
-        raise ValueError("invalid date format")
+    next_payment_date = str(payload.get("next_payment_date", "")).strip()
+    if period_type == "monthly":
+        if not parse_date(next_payment_date):
+            raise ValueError("invalid date format")
+    else:
+        next_payment_date = ""
 
     name = str(payload.get("name", "")).strip()
     if not name:
@@ -65,6 +69,7 @@ def normalize_server_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "name": name,
+        "hosting_name": str(payload.get("hosting_name") or "").strip(),
         "ip_address": str(payload.get("ip_address") or "").strip(),
         "period_type": period_type,
         "payment_amount": payment_amount,
@@ -77,7 +82,11 @@ def normalize_server_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def due_for_reminder(server: dict[str, Any], today: dt.date, reminder_days: int, ignore_last_notified: bool = False) -> bool:
-    due_date = parse_date(str(server.get("next_payment_date", "")))
+    period_type = str(server.get("period_type") or "monthly")
+    due_date_raw = str(server.get("next_payment_date") or "").strip()
+    if period_type == "daily":
+        due_date_raw = str(server.get("covered_until") or "").strip()
+    due_date = parse_date(due_date_raw)
     if not due_date:
         return False
     last_notified_on = parse_date(str(server.get("last_notified_on", "")))
@@ -129,3 +138,10 @@ def balance_coverage_until_str(server: dict[str, Any], today: dt.date | None = N
     if not covered_until:
         return ""
     return covered_until.strftime(DATE_FMT)
+
+
+TIME_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+
+
+def is_valid_time_hhmm(value: str) -> bool:
+    return bool(TIME_RE.match(value.strip()))

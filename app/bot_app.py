@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from html import escape
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import telebot
 from telebot import types
@@ -14,6 +15,7 @@ from app.services import (
     DATE_FMT,
     calculate_next_date,
     due_for_reminder,
+    is_valid_time_hhmm,
     next_server_id,
     normalize_server_payload,
     parse_date,
@@ -58,6 +60,7 @@ class RentNotifierBot:
         self.storage = Storage(Path("data"), settings.owner_chat_id)
         self.bot = telebot.TeleBot(settings.bot_token)
         self.sessions: dict[int, SessionState] = {}
+        self._last_auto_check_key: str = ""
 
     def register_handlers(self) -> None:
         @self.bot.message_handler(commands=["start"])
@@ -298,11 +301,16 @@ class RentNotifierBot:
             state = self.state()
             self.send_html(
                 message.chat.id,
-                settings_text(self.settings.owner_chat_id, int(state["reminder_days"])),
+                settings_text(
+                    self.settings.owner_chat_id,
+                    int(state["reminder_days"]),
+                    str(state.get("reminder_time", "09:00")),
+                    str(state.get("reminder_timezone", self.settings.timezone)),
+                ),
                 reply_markup=settings_keyboard(),
             )
             return
-        if text == "🔔 Общее напоминание":
+        if text == "🔔 Настройки напоминаний":
             if self.reject_non_admin(message):
                 return
             self.sessions[message.chat.id] = SessionState(flow="settings", step="reminder_days")
@@ -378,7 +386,6 @@ class RentNotifierBot:
         if session.flow == "add":
             prompts = {
                 "name": "➕ <b>Новый сервер</b>\n\nВведите имя сервера.",
-                "ip_address": "🌐 Введите IP или нажмите кнопку пропуска.",
                 "period_type": "⏱ Выберите тип периода.",
                 "payment_amount": (
                     "💰 Введите сумму списания за период "
@@ -394,7 +401,7 @@ class RentNotifierBot:
                 return
             reply_markup = (
                 skip_keyboard()
-                if session.step in {"ip_address", "payment_amount", "lk_balance", "lk_topup_url"}
+                if session.step in {"payment_amount", "lk_balance", "lk_topup_url"}
                 else cancel_keyboard()
             )
             self.send_html(chat_id, prompts[session.step], reply_markup=reply_markup)
@@ -407,6 +414,7 @@ class RentNotifierBot:
                 return
             prompts = {
                 "name": "✏️ Введите новое имя сервера.",
+                "hosting_name": "🏢 Введите название хостинга или <code>-</code>, чтобы очистить поле.",
                 "ip_address": "🌐 Введите новый IP или <code>-</code>, чтобы очистить поле.",
                 "payment_amount": "💰 Введите новую сумму списания (число) или <code>-</code>, чтобы убрать значение.",
                 "lk_balance": "🏦 Введите новый баланс ЛК (число) или <code>-</code>, чтобы убрать значение.",
@@ -428,10 +436,31 @@ class RentNotifierBot:
             return
 
         if session.flow == "settings":
+            state = self.state()
+            if session.step == "reminder_time":
+                self.send_html(
+                    chat_id,
+                    "⏰ Введите время уведомлений в формате <code>HH:MM</code> "
+                    f"или пропустите (текущее: <code>{state.get('reminder_time', '09:00')}</code>).",
+                    reply_markup=skip_keyboard(),
+                )
+                return
+            if session.step == "reminder_timezone":
+                self.send_html(
+                    chat_id,
+                    "🌍 Введите таймзону (например <code>Europe/Moscow</code>) "
+                    f"или пропустите (текущая: <code>{state.get('reminder_timezone', self.settings.timezone)}</code>).",
+                    reply_markup=skip_keyboard(),
+                )
+                return
             self.send_html(
                 chat_id,
-                "🔔 Введите общее количество дней для напоминания (0 и больше).",
-                reply_markup=cancel_keyboard(),
+                "🔔 <b>Настройки напоминаний</b>\n\n"
+                f"Текущее значение дней: <code>{state['reminder_days']}</code>\n"
+                f"Текущее время: <code>{state.get('reminder_time', '09:00')}</code>\n"
+                f"Текущая таймзона: <code>{state.get('reminder_timezone', self.settings.timezone)}</code>\n\n"
+                "Введите общее количество дней для напоминания (0 и больше).",
+                reply_markup=skip_keyboard(),
             )
 
     def handle_add_flow(self, message: types.Message, session: SessionState) -> None:
@@ -442,12 +471,6 @@ class RentNotifierBot:
                 return
             self.push_history(session)
             session.payload["name"] = text
-            session.step = "ip_address"
-            self.prompt_current_step(message.chat.id, session)
-            return
-        if session.step == "ip_address":
-            self.push_history(session)
-            session.payload["ip_address"] = "" if text in {"", "-", SKIP_BUTTON} else text
             session.step = "period_type"
             self.prompt_current_step(message.chat.id, session)
             return
@@ -463,7 +486,11 @@ class RentNotifierBot:
         if session.step == "payment_amount":
             self.push_history(session)
             session.payload["payment_amount"] = "" if text in {"", "-", SKIP_BUTTON} else text
-            session.step = "next_payment_date"
+            if session.payload.get("period_type") == "daily":
+                session.payload["next_payment_date"] = ""
+                session.step = "lk_balance"
+            else:
+                session.step = "next_payment_date"
             self.prompt_current_step(message.chat.id, session)
             return
         if session.step == "next_payment_date":
@@ -522,6 +549,7 @@ class RentNotifierBot:
         if session.step == "field":
             mapping = {
                 f"✏️ Имя ({server_id})": "name",
+                f"🏢 Хостинг ({server_id})": "hosting_name",
                 f"🌐 IP ({server_id})": "ip_address",
                 f"⏱ Период ({server_id})": "period_type",
                 f"💰 Сумма списания ({server_id})": "payment_amount",
@@ -543,6 +571,8 @@ class RentNotifierBot:
                 self.send_html(message.chat.id, "Имя не может быть пустым.")
                 return
             server["name"] = text
+        elif session.step == "hosting_name":
+            server["hosting_name"] = "" if text in {"", "-"} else text
         elif session.step == "ip_address":
             server["ip_address"] = "" if text in {"", "-"} else text
         elif session.step == "payment_amount":
@@ -552,6 +582,9 @@ class RentNotifierBot:
         elif session.step == "lk_topup_url":
             server["lk_topup_url"] = "" if text in {"", "-"} else text
         elif session.step == "next_payment_date":
+            if str(server.get("period_type") or "") == "daily":
+                self.send_html(message.chat.id, "Для ежедневного периода фиксированная дата оплаты не используется.")
+                return
             if not parse_date(text):
                 self.send_html(message.chat.id, "Введите дату в формате <code>dd.mm.yyyy</code>.")
                 return
@@ -752,20 +785,55 @@ class RentNotifierBot:
 
     def handle_settings_flow(self, message: types.Message, session: SessionState) -> None:
         text = (message.text or "").strip()
-        if session.step != "reminder_days":
+        if session.step not in {"reminder_days", "reminder_time", "reminder_timezone"}:
             self.sessions.pop(message.chat.id, None)
             self.send_html(message.chat.id, "⚠️ Неизвестный шаг настроек.", reply_markup=main_menu_keyboard())
             return
-        if not text.isdigit() or int(text) < 0:
-            self.send_html(message.chat.id, "Введите число 0 или больше.")
-            return
         state = self.state()
-        state["reminder_days"] = int(text)
-        self.save_state(state)
+        if session.step == "reminder_days":
+            if text in {"", "-", SKIP_BUTTON}:
+                session.step = "reminder_time"
+                self.prompt_current_step(message.chat.id, session)
+                return
+            if not text.isdigit() or int(text) < 0:
+                self.send_html(message.chat.id, "Введите число 0 или больше.")
+                return
+            state["reminder_days"] = int(text)
+            self.save_state(state)
+            session.step = "reminder_time"
+            self.prompt_current_step(message.chat.id, session)
+            return
+
+        if session.step == "reminder_time":
+            if text not in {"", "-", SKIP_BUTTON}:
+                if not is_valid_time_hhmm(text):
+                    self.send_html(message.chat.id, "Введите время в формате <code>HH:MM</code>, например <code>09:00</code>.")
+                    return
+                state["reminder_time"] = text
+                self.save_state(state)
+            session.step = "reminder_timezone"
+            self.prompt_current_step(message.chat.id, session)
+            return
+
+        if text not in {"", "-", SKIP_BUTTON}:
+            try:
+                ZoneInfo(text)
+            except Exception:
+                self.send_html(
+                    message.chat.id,
+                    "Неверная таймзона. Пример: <code>Europe/Moscow</code> или <code>Asia/Almaty</code>.",
+                )
+                return
+            state["reminder_timezone"] = text
+            self.save_state(state)
         self.sessions.pop(message.chat.id, None)
+        state = self.state()
         self.send_html(
             message.chat.id,
-            f"✅ Общее напоминание установлено: <code>{state['reminder_days']}</code> дн.",
+            "✅ Настройки напоминаний обновлены.\n\n"
+            f"• Дни: <code>{state['reminder_days']}</code>\n"
+            f"• Время: <code>{state.get('reminder_time', '09:00')}</code>\n"
+            f"• Таймзона: <code>{state.get('reminder_timezone', self.settings.timezone)}</code>",
             reply_markup=settings_keyboard(),
         )
 
@@ -839,3 +907,22 @@ class RentNotifierBot:
         today = dt.date.today()
         due_servers = self.collect_due_servers(state, today, ignore_last_notified=False)
         self.notify_due_servers(state, due_servers, update_last_notified=True, today=today)
+
+    def run_scheduled_check(self) -> None:
+        state = self.state()
+        reminder_time = str(state.get("reminder_time", "09:00"))
+        reminder_timezone = str(state.get("reminder_timezone", self.settings.timezone))
+        try:
+            tz = ZoneInfo(reminder_timezone)
+        except Exception:
+            tz = ZoneInfo(self.settings.timezone)
+            reminder_timezone = self.settings.timezone
+        now = dt.datetime.now(tz)
+        current_hhmm = now.strftime("%H:%M")
+        run_key = now.strftime("%Y-%m-%d")
+        if current_hhmm != reminder_time:
+            return
+        if self._last_auto_check_key == run_key:
+            return
+        self._last_auto_check_key = run_key
+        self.run_daily_check()
