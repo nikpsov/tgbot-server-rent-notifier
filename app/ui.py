@@ -84,7 +84,7 @@ def server_edit_keyboard(server_id: str) -> types.ReplyKeyboardMarkup:
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     kb.row(f"✏️ Имя ({server_id})", f"🌐 IP ({server_id})")
     kb.row(f"📆 Дата оплаты ({server_id})", f"⏱ Период ({server_id})")
-    kb.row(f"🔔 Напоминание ({server_id})")
+    kb.row(f"💰 Сумма ({server_id})", f"🔔 Напоминание ({server_id})")
     kb.row(BACK_BUTTON, CANCEL_BUTTON)
     return kb
 
@@ -126,26 +126,70 @@ def settings_text(owner_id: int) -> str:
     )
 
 
+def recipient_link_href(chat_id: int, chat_type: str) -> str | None:
+    """Ссылка для открытия чата в клиенте Telegram по числовому ID (без username)."""
+    ct = chat_type
+    if ct == "unknown":
+        if chat_id > 0:
+            ct = "private"
+        elif str(chat_id).startswith("-100"):
+            ct = "supergroup"
+        else:
+            return None
+    if ct == "private":
+        return f"tg://user?id={chat_id}"
+    if ct in ("channel", "supergroup"):
+        s = str(chat_id)
+        if s.startswith("-100") and len(s) > 4:
+            return f"https://t.me/c/{s[4:]}/1"
+    return None
+
+
 def recipient_title(item: dict[str, Any]) -> str:
-    title = escape(str(item.get("title") or item.get("chat_id")))
+    raw_title = str(item.get("title") or item.get("chat_id"))
+    try:
+        chat_id = int(item["chat_id"])
+    except (TypeError, ValueError, KeyError):
+        chat_id = 0
     chat_type = str(item.get("type") or "unknown")
     icon = "👤" if chat_type == "private" else "👥"
-    return f"{icon} {title} (<code>{item.get('chat_id')}</code>)"
+    href = recipient_link_href(chat_id, chat_type)
+    if href:
+        name_html = f'<a href="{href}">{escape(raw_title)}</a>'
+    else:
+        name_html = escape(raw_title)
+    return f"{icon} {name_html} (<code>{item.get('chat_id')}</code>)"
 
 
 def server_text(server_id: str, server: dict[str, Any]) -> str:
-    if server.get("period_type") == "monthly":
-        period = "ежемесячно (30 дней)"
-    else:
-        period = f"кастом ({server.get('custom_days')} дн.)"
+    lines: list[str] = [f"🖥 <b>Сервер</b> <code>{escape(server_id)}</code>"]
 
-    ip = escape(str(server.get("ip_address") or "—"))
-    name = escape(str(server.get("name", "Unnamed")))
-    return (
-        f"🖥 <b>Сервер</b> <code>{escape(server_id)}</code>\n"
-        f"• Имя: <b>{name}</b>\n"
-        f"• IP: <code>{ip}</code>\n"
-        f"• Следующая оплата: <b>{format_date(str(server.get('next_payment_date', '')))}</b>\n"
-        f"• Период: <code>{escape(period)}</code>\n"
-        f"• Напомнить за: <code>{server.get('reminder_days')}</code> дн."
-    )
+    name_raw = str(server.get("name") or "").strip()
+    if name_raw:
+        lines.append(f"• Имя: <b>{escape(name_raw)}</b>")
+
+    ip_raw = str(server.get("ip_address") or "").strip()
+    if ip_raw:
+        lines.append(f"• IP: <code>{escape(ip_raw)}</code>")
+
+    amount_raw = str(server.get("payment_amount") or "").strip()
+    if amount_raw:
+        lines.append(f"• Сумма: <b>{escape(amount_raw)}</b>")
+
+    npd_raw = str(server.get("next_payment_date") or "").strip()
+    if npd_raw:
+        lines.append(f"• Следующая оплата: <b>{format_date(npd_raw)}</b>")
+
+    pt = server.get("period_type")
+    if pt == "monthly":
+        lines.append(f"• Период: <code>{escape('ежемесячно (30 дней)')}</code>")
+    elif pt == "custom":
+        cd = server.get("custom_days")
+        period = f"кастом ({cd} дн.)" if cd is not None else "кастом"
+        lines.append(f"• Период: <code>{escape(period)}</code>")
+
+    rd = server.get("reminder_days")
+    if rd is not None and str(rd).strip() != "":
+        lines.append(f"• Напомнить за: <code>{escape(str(rd))}</code> дн.")
+
+    return "\n".join(lines)

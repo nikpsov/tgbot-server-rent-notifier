@@ -60,6 +60,7 @@ class Storage:
         return {
             "name": str(server.get("name") or "Unnamed server"),
             "ip_address": str(server.get("ip_address") or ""),
+            "payment_amount": str(server.get("payment_amount") or "").strip(),
             "next_payment_date": str(server.get("next_payment_date") or ""),
             "period_type": period_type,
             "custom_days": custom_days,

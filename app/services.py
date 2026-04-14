@@ -71,9 +71,12 @@ def normalize_server_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if not name:
         raise ValueError("name is empty")
 
+    payment_amount = str(payload.get("payment_amount") or "").strip()
+
     return {
         "name": name,
         "ip_address": str(payload.get("ip_address") or "").strip(),
+        "payment_amount": payment_amount,
         "next_payment_date": next_payment_date,
         "period_type": period_type,
         "custom_days": custom_days,

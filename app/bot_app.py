@@ -361,6 +361,10 @@ class RentNotifierBot:
             prompts = {
                 "name": "➕ <b>Новый сервер</b>\n\nВведите имя сервера.",
                 "ip_address": "🌐 Введите IP или нажмите кнопку пропуска.",
+                "payment_amount": (
+                    "💰 Введите сумму на оплату (например <code>1500 ₽</code> или <code>99 USD</code>) "
+                    "или нажмите пропуск, если сумма не нужна."
+                ),
                 "next_payment_date": "📆 Введите дату следующей оплаты в формате <code>dd.mm.yyyy</code>.",
                 "custom_days": "🧮 Введите количество дней для кастомного периода.",
                 "reminder_days": (
@@ -371,7 +375,9 @@ class RentNotifierBot:
             if session.step == "period_type":
                 self.send_html(chat_id, "⏱ Выберите тип периода.", reply_markup=period_keyboard())
                 return
-            reply_markup = skip_keyboard() if session.step in {"ip_address", "reminder_days"} else cancel_keyboard()
+            reply_markup = (
+                skip_keyboard() if session.step in {"ip_address", "payment_amount", "reminder_days"} else cancel_keyboard()
+            )
             self.send_html(chat_id, prompts[session.step], reply_markup=reply_markup)
             return
 
@@ -383,6 +389,7 @@ class RentNotifierBot:
             prompts = {
                 "name": "✏️ Введите новое имя сервера.",
                 "ip_address": "🌐 Введите новый IP или <code>-</code>, чтобы очистить поле.",
+                "payment_amount": "💰 Введите новую сумму или <code>-</code>, чтобы убрать сумму.",
                 "next_payment_date": "📆 Введите новую дату в формате <code>dd.mm.yyyy</code>.",
                 "custom_days": "🧮 Введите количество дней для кастомного периода.",
                 "reminder_days": "🔔 Введите новое значение reminder days (0 и больше).",
@@ -414,6 +421,12 @@ class RentNotifierBot:
         if session.step == "ip_address":
             self.push_history(session)
             session.payload["ip_address"] = "" if text in {"", "-", SKIP_BUTTON} else text
+            session.step = "payment_amount"
+            self.prompt_current_step(message.chat.id, session)
+            return
+        if session.step == "payment_amount":
+            self.push_history(session)
+            session.payload["payment_amount"] = "" if text in {"", "-", SKIP_BUTTON} else text
             session.step = "next_payment_date"
             self.prompt_current_step(message.chat.id, session)
             return
@@ -496,6 +509,7 @@ class RentNotifierBot:
                 f"🌐 IP ({server_id})": "ip_address",
                 f"📆 Дата оплаты ({server_id})": "next_payment_date",
                 f"⏱ Период ({server_id})": "period_type",
+                f"💰 Сумма ({server_id})": "payment_amount",
                 f"🔔 Напоминание ({server_id})": "reminder_days",
             }
             next_step = mapping.get(text)
@@ -514,6 +528,8 @@ class RentNotifierBot:
             server["name"] = text
         elif session.step == "ip_address":
             server["ip_address"] = "" if text in {"", "-"} else text
+        elif session.step == "payment_amount":
+            server["payment_amount"] = "" if text in {"", "-"} else text
         elif session.step == "next_payment_date":
             if not parse_date(text):
                 self.send_html(message.chat.id, "Введите дату в формате <code>dd.mm.yyyy</code>.")
