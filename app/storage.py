@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from app.services import DEFAULT_REMINDER_DAYS
+from app.services import DEFAULT_REMINDER_DAYS, balance_coverage_until_str
 
 
 class Storage:
@@ -38,24 +38,19 @@ class Storage:
         if period_type not in {"monthly", "daily"}:
             period_type = "monthly"
 
-        try:
-            reminder_days = int(server.get("reminder_days", DEFAULT_REMINDER_DAYS))
-            if reminder_days < 0:
-                reminder_days = DEFAULT_REMINDER_DAYS
-        except (TypeError, ValueError):
-            reminder_days = DEFAULT_REMINDER_DAYS
-
-        return {
+        normalized = {
             "name": str(server.get("name") or "Unnamed server"),
             "ip_address": str(server.get("ip_address") or ""),
+            "period_type": period_type,
             "payment_amount": str(server.get("payment_amount") or "").strip(),
+            "next_payment_date": str(server.get("next_payment_date") or ""),
+            "covered_until": str(server.get("covered_until") or "").strip(),
             "lk_balance": str(server.get("lk_balance") or "").strip(),
             "lk_topup_url": str(server.get("lk_topup_url") or "").strip(),
-            "next_payment_date": str(server.get("next_payment_date") or ""),
-            "period_type": period_type,
-            "reminder_days": reminder_days,
             "last_notified_on": str(server.get("last_notified_on") or ""),
         }
+        normalized["covered_until"] = balance_coverage_until_str(normalized)
+        return normalized
 
     def _normalize_recipients(self, recipients: Any) -> list[dict[str, Any]]:
         normalized: list[dict[str, Any]] = []
@@ -96,6 +91,13 @@ class Storage:
         if not isinstance(raw, dict):
             raw = {}
 
+        try:
+            reminder_days = int(raw.get("reminder_days", DEFAULT_REMINDER_DAYS))
+            if reminder_days < 0:
+                reminder_days = DEFAULT_REMINDER_DAYS
+        except (TypeError, ValueError):
+            reminder_days = DEFAULT_REMINDER_DAYS
+
         servers: dict[str, Any] = {}
         raw_servers = raw.get("servers")
         if isinstance(raw_servers, dict):
@@ -107,5 +109,6 @@ class Storage:
         return {
             "admins": self._normalize_admins(raw.get("admins")),
             "recipients": self._normalize_recipients(raw.get("recipients")),
+            "reminder_days": reminder_days,
             "servers": servers,
         }

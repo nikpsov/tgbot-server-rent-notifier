@@ -51,10 +51,6 @@ def normalize_server_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if period_type not in {"monthly", "daily"}:
         period_type = "monthly"
 
-    reminder_days = int(payload.get("reminder_days", DEFAULT_REMINDER_DAYS))
-    if reminder_days < 0:
-        raise ValueError("reminder_days must be >= 0")
-
     next_payment_date = str(payload.get("next_payment_date", ""))
     if not parse_date(next_payment_date):
         raise ValueError("invalid date format")
@@ -70,23 +66,22 @@ def normalize_server_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "name": name,
         "ip_address": str(payload.get("ip_address") or "").strip(),
+        "period_type": period_type,
         "payment_amount": payment_amount,
+        "next_payment_date": next_payment_date,
+        "covered_until": str(payload.get("covered_until") or "").strip(),
         "lk_balance": lk_balance,
         "lk_topup_url": lk_topup_url,
-        "next_payment_date": next_payment_date,
-        "period_type": period_type,
-        "reminder_days": reminder_days,
         "last_notified_on": str(payload.get("last_notified_on") or ""),
     }
 
 
-def due_for_reminder(server: dict[str, Any], today: dt.date) -> bool:
+def due_for_reminder(server: dict[str, Any], today: dt.date, reminder_days: int, ignore_last_notified: bool = False) -> bool:
     due_date = parse_date(str(server.get("next_payment_date", "")))
     if not due_date:
         return False
-    reminder_days = int(server.get("reminder_days") or DEFAULT_REMINDER_DAYS)
     last_notified_on = parse_date(str(server.get("last_notified_on", "")))
-    if last_notified_on == today:
+    if not ignore_last_notified and last_notified_on == today:
         return False
     return today + dt.timedelta(days=reminder_days) >= due_date
 
@@ -114,6 +109,8 @@ def balance_coverage_until(server: dict[str, Any], today: dt.date | None = None)
 
     if period_type == "daily":
         paid_days = int(balance // amount)
+        if paid_days <= 0:
+            return None
         return current_day + dt.timedelta(days=paid_days - 1)
 
     due_date = parse_date(str(server.get("next_payment_date", "")))
@@ -125,3 +122,10 @@ def balance_coverage_until(server: dict[str, Any], today: dt.date | None = None)
         remainder -= amount
         next_charge += dt.timedelta(days=30)
     return next_charge - dt.timedelta(days=1)
+
+
+def balance_coverage_until_str(server: dict[str, Any], today: dt.date | None = None) -> str:
+    covered_until = balance_coverage_until(server, today=today)
+    if not covered_until:
+        return ""
+    return covered_until.strftime(DATE_FMT)

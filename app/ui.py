@@ -3,12 +3,13 @@ from typing import Any
 
 from telebot import types
 
-from app.services import balance_coverage_until, format_date
+from app.services import format_date
 
 
 MAIN_MENU_BUTTONS = [
     "➕ Добавить сервер",
     "📋 Список серверов",
+    "🔍 Проверить оплаты",
     "🔔 Получатели",
     "👥 Админы",
     "⚙️ Настройки",
@@ -23,6 +24,7 @@ SKIP_BUTTON = "⏭️ Пропустить"
 def main_menu_keyboard() -> types.ReplyKeyboardMarkup:
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.row("➕ Добавить сервер", "📋 Список серверов")
+    kb.row("🔍 Проверить оплаты")
     kb.row("🔔 Получатели", "👥 Админы")
     kb.row("⚙️ Настройки", "❓ Помощь")
     return kb
@@ -85,7 +87,7 @@ def server_edit_keyboard(server_id: str) -> types.ReplyKeyboardMarkup:
     kb.row(f"✏️ Имя ({server_id})", f"🌐 IP ({server_id})")
     kb.row(f"📆 Дата оплаты ({server_id})", f"⏱ Период ({server_id})")
     kb.row(f"💰 Сумма списания ({server_id})", f"🏦 Баланс ЛК ({server_id})")
-    kb.row(f"🔗 Ссылка ЛК ({server_id})", f"🔔 Напоминание ({server_id})")
+    kb.row(f"🔗 Ссылка ЛК ({server_id})")
     kb.row(BACK_BUTTON, CANCEL_BUTTON)
     return kb
 
@@ -119,10 +121,18 @@ def help_text() -> str:
     )
 
 
-def settings_text(owner_id: int) -> str:
+def settings_keyboard() -> types.ReplyKeyboardMarkup:
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    kb.row("🔔 Общее напоминание")
+    kb.row(BACK_BUTTON, CANCEL_BUTTON)
+    return kb
+
+
+def settings_text(owner_id: int, reminder_days: int) -> str:
     return (
         "⚙️ <b>Настройки</b>\n\n"
         f"Owner ID: <code>{owner_id}</code>\n"
+        f"Общее напоминание: <code>{reminder_days}</code> дн.\n"
         "Доступ к управлению есть у owner и администраторов."
     )
 
@@ -173,9 +183,23 @@ def server_text(server_id: str, server: dict[str, Any]) -> str:
     if ip_raw:
         lines.append(f"• IP: <code>{escape(ip_raw)}</code>")
 
+    pt = server.get("period_type")
+    if pt == "monthly":
+        lines.append(f"• Период: <code>{escape('ежемесячно (30 дней)')}</code>")
+    elif pt == "daily":
+        lines.append(f"• Период: <code>{escape('ежедневно')}</code>")
+
     amount_raw = str(server.get("payment_amount") or "").strip()
     if amount_raw:
         lines.append(f"• Сумма списания: <b>{escape(amount_raw)}</b>")
+
+    npd_raw = str(server.get("next_payment_date") or "").strip()
+    if npd_raw:
+        lines.append(f"• Следующая оплата: <b>{format_date(npd_raw)}</b>")
+
+    covered_until = str(server.get("covered_until") or "").strip()
+    if covered_until:
+        lines.append(f"• Хватает до: <b>{format_date(covered_until)}</b>")
 
     lk_balance_raw = str(server.get("lk_balance") or "").strip()
     if lk_balance_raw:
@@ -184,23 +208,5 @@ def server_text(server_id: str, server: dict[str, Any]) -> str:
     lk_topup_url = str(server.get("lk_topup_url") or "").strip()
     if lk_topup_url:
         lines.append(f'• Пополнение ЛК: <a href="{escape(lk_topup_url)}">открыть</a>')
-
-    npd_raw = str(server.get("next_payment_date") or "").strip()
-    if npd_raw:
-        lines.append(f"• Следующая оплата: <b>{format_date(npd_raw)}</b>")
-
-    pt = server.get("period_type")
-    if pt == "monthly":
-        lines.append(f"• Период: <code>{escape('ежемесячно (30 дней)')}</code>")
-    elif pt == "daily":
-        lines.append(f"• Период: <code>{escape('ежедневно')}</code>")
-
-    rd = server.get("reminder_days")
-    if rd is not None and str(rd).strip() != "":
-        lines.append(f"• Напомнить за: <code>{escape(str(rd))}</code> дн.")
-
-    covered_until = balance_coverage_until(server)
-    if covered_until:
-        lines.append(f"• Хватает до: <b>{covered_until.strftime('%d.%m.%Y')}</b>")
 
     return "\n".join(lines)
