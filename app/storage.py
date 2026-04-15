@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from app.services import DEFAULT_REMINDER_DAYS, balance_coverage_until_str
+from app.services import DEFAULT_REMINDER_DAYS, apply_periodic_balance_charge, balance_coverage_until_str
 
 
 class Storage:
@@ -47,9 +47,11 @@ class Storage:
             "next_payment_date": str(server.get("next_payment_date") or ""),
             "covered_until": str(server.get("covered_until") or "").strip(),
             "lk_balance": str(server.get("lk_balance") or "").strip(),
+            "balance_updated_on": str(server.get("balance_updated_on") or "").strip(),
             "lk_topup_url": str(server.get("lk_topup_url") or "").strip(),
             "last_notified_on": str(server.get("last_notified_on") or ""),
         }
+        apply_periodic_balance_charge(normalized)
         normalized["covered_until"] = balance_coverage_until_str(normalized)
         return normalized
 

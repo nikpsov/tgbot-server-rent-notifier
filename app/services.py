@@ -76,6 +76,7 @@ def normalize_server_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "next_payment_date": next_payment_date,
         "covered_until": str(payload.get("covered_until") or "").strip(),
         "lk_balance": lk_balance,
+        "balance_updated_on": str(payload.get("balance_updated_on") or "").strip(),
         "lk_topup_url": lk_topup_url,
         "last_notified_on": str(payload.get("last_notified_on") or ""),
     }
@@ -145,3 +146,41 @@ TIME_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 
 def is_valid_time_hhmm(value: str) -> bool:
     return bool(TIME_RE.match(value.strip()))
+
+
+def decimal_to_str(value: Decimal) -> str:
+    normalized = value.quantize(Decimal("0.01")).normalize()
+    text = format(normalized, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text or "0"
+
+
+def apply_periodic_balance_charge(server: dict[str, Any], today: dt.date | None = None) -> None:
+    current_day = today or dt.date.today()
+    balance = parse_decimal_value(server.get("lk_balance"))
+    amount = parse_decimal_value(server.get("payment_amount"))
+    period_type = str(server.get("period_type") or "monthly")
+    if balance is None or amount is None or amount <= 0:
+        return
+
+    updated_on_raw = str(server.get("balance_updated_on") or "").strip()
+    updated_on = parse_date(updated_on_raw)
+    if not updated_on:
+        server["balance_updated_on"] = current_day.strftime(DATE_FMT)
+        return
+    if updated_on >= current_day:
+        return
+
+    period_days = 1 if period_type == "daily" else 30
+    elapsed_days = (current_day - updated_on).days
+    periods_elapsed = elapsed_days // period_days
+    if periods_elapsed <= 0:
+        return
+
+    charge = amount * periods_elapsed
+    new_balance = balance - charge
+    if new_balance < 0:
+        new_balance = Decimal("0")
+    server["lk_balance"] = decimal_to_str(new_balance)
+    server["balance_updated_on"] = (updated_on + dt.timedelta(days=periods_elapsed * period_days)).strftime(DATE_FMT)

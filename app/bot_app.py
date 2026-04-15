@@ -465,6 +465,7 @@ class RentNotifierBot:
 
     def handle_add_flow(self, message: types.Message, session: SessionState) -> None:
         text = (message.text or "").strip()
+        today_str = dt.date.today().strftime(DATE_FMT)
         if session.step == "name":
             if not text:
                 self.send_html(message.chat.id, "Имя не может быть пустым.")
@@ -511,6 +512,7 @@ class RentNotifierBot:
         if session.step == "lk_topup_url":
             self.push_history(session)
             session.payload["lk_topup_url"] = "" if text in {"", "-", SKIP_BUTTON} else text
+            session.payload["balance_updated_on"] = today_str
             try:
                 server_data = normalize_server_payload(session.payload)
             except ValueError as exc:
@@ -538,6 +540,7 @@ class RentNotifierBot:
 
     def handle_edit_flow(self, message: types.Message, session: SessionState) -> None:
         text = (message.text or "").strip()
+        today_str = dt.date.today().strftime(DATE_FMT)
         server_id = str(session.payload["server_id"])
         state = self.state()
         server = state["servers"].get(server_id)
@@ -577,8 +580,10 @@ class RentNotifierBot:
             server["ip_address"] = "" if text in {"", "-"} else text
         elif session.step == "payment_amount":
             server["payment_amount"] = "" if text in {"", "-"} else text
+            server["balance_updated_on"] = today_str
         elif session.step == "lk_balance":
             server["lk_balance"] = "" if text in {"", "-"} else text
+            server["balance_updated_on"] = today_str
         elif session.step == "lk_topup_url":
             server["lk_topup_url"] = "" if text in {"", "-"} else text
         elif session.step == "next_payment_date":
@@ -594,6 +599,7 @@ class RentNotifierBot:
                 self.send_html(message.chat.id, "Выберите тип периода кнопками.")
                 return
             server["period_type"] = "monthly" if text == "📅 Ежемесячно" else "daily"
+            server["balance_updated_on"] = today_str
 
         try:
             state["servers"][server_id] = normalize_server_payload(server)
