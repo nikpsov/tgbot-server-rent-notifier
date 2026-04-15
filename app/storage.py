@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from app.services import DEFAULT_REMINDER_DAYS, apply_periodic_balance_charge, balance_coverage_until_str
+from app.services import DEFAULT_REMINDER_DAYS, apply_periodic_balance_charge_with_time, balance_coverage_until_str
 
 
 class Storage:
@@ -51,7 +51,7 @@ class Storage:
             "lk_topup_url": str(server.get("lk_topup_url") or "").strip(),
             "last_notified_on": str(server.get("last_notified_on") or ""),
         }
-        apply_periodic_balance_charge(normalized)
+        apply_periodic_balance_charge_with_time(normalized, self._balance_charge_time)
         normalized["covered_until"] = balance_coverage_until_str(normalized)
         return normalized
 
@@ -102,6 +102,8 @@ class Storage:
             reminder_days = DEFAULT_REMINDER_DAYS
         reminder_time = str(raw.get("reminder_time") or "09:00").strip() or "09:00"
         reminder_timezone = str(raw.get("reminder_timezone") or "Europe/Moscow").strip() or "Europe/Moscow"
+        balance_charge_time = str(raw.get("balance_charge_time") or "00:00").strip() or "00:00"
+        self._balance_charge_time = balance_charge_time
 
         servers: dict[str, Any] = {}
         raw_servers = raw.get("servers")
@@ -117,5 +119,6 @@ class Storage:
             "reminder_days": reminder_days,
             "reminder_time": reminder_time,
             "reminder_timezone": reminder_timezone,
+            "balance_charge_time": balance_charge_time,
             "servers": servers,
         }

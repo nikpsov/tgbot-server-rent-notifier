@@ -184,3 +184,22 @@ def apply_periodic_balance_charge(server: dict[str, Any], today: dt.date | None 
         new_balance = Decimal("0")
     server["lk_balance"] = decimal_to_str(new_balance)
     server["balance_updated_on"] = (updated_on + dt.timedelta(days=periods_elapsed * period_days)).strftime(DATE_FMT)
+
+
+def apply_periodic_balance_charge_with_time(
+    server: dict[str, Any],
+    charge_time: str,
+    now_local: dt.datetime | None = None,
+) -> None:
+    current_dt = now_local or dt.datetime.now()
+    if not is_valid_time_hhmm(charge_time):
+        apply_periodic_balance_charge(server, current_dt.date())
+        return
+
+    hour, minute = (int(part) for part in charge_time.split(":", 1))
+    current_anchor = dt.datetime.combine(current_dt.date(), dt.time(hour=hour, minute=minute))
+    if current_dt >= current_anchor:
+        effective_day = current_dt.date()
+    else:
+        effective_day = (current_dt - dt.timedelta(days=1)).date()
+    apply_periodic_balance_charge(server, effective_day)

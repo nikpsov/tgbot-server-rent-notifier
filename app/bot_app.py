@@ -306,6 +306,7 @@ class RentNotifierBot:
                     int(state["reminder_days"]),
                     str(state.get("reminder_time", "09:00")),
                     str(state.get("reminder_timezone", self.settings.timezone)),
+                    str(state.get("balance_charge_time", "00:00")),
                 ),
                 reply_markup=settings_keyboard(),
             )
@@ -453,12 +454,21 @@ class RentNotifierBot:
                     reply_markup=skip_keyboard(),
                 )
                 return
+            if session.step == "balance_charge_time":
+                self.send_html(
+                    chat_id,
+                    "💸 Введите время списания баланса в формате <code>HH:MM</code> "
+                    f"или пропустите (текущее: <code>{state.get('balance_charge_time', '00:00')}</code>).",
+                    reply_markup=skip_keyboard(),
+                )
+                return
             self.send_html(
                 chat_id,
                 "🔔 <b>Настройки напоминаний</b>\n\n"
                 f"Текущее значение дней: <code>{state['reminder_days']}</code>\n"
                 f"Текущее время: <code>{state.get('reminder_time', '09:00')}</code>\n"
-                f"Текущая таймзона: <code>{state.get('reminder_timezone', self.settings.timezone)}</code>\n\n"
+                f"Текущая таймзона: <code>{state.get('reminder_timezone', self.settings.timezone)}</code>\n"
+                f"Время списания баланса: <code>{state.get('balance_charge_time', '00:00')}</code>\n\n"
                 "Введите общее количество дней для напоминания (0 и больше).",
                 reply_markup=skip_keyboard(),
             )
@@ -791,7 +801,7 @@ class RentNotifierBot:
 
     def handle_settings_flow(self, message: types.Message, session: SessionState) -> None:
         text = (message.text or "").strip()
-        if session.step not in {"reminder_days", "reminder_time", "reminder_timezone"}:
+        if session.step not in {"reminder_days", "reminder_time", "reminder_timezone", "balance_charge_time"}:
             self.sessions.pop(message.chat.id, None)
             self.send_html(message.chat.id, "⚠️ Неизвестный шаг настроек.", reply_markup=main_menu_keyboard())
             return
@@ -821,16 +831,27 @@ class RentNotifierBot:
             self.prompt_current_step(message.chat.id, session)
             return
 
+        if session.step == "reminder_timezone":
+            if text not in {"", "-", SKIP_BUTTON}:
+                try:
+                    ZoneInfo(text)
+                except Exception:
+                    self.send_html(
+                        message.chat.id,
+                        "Неверная таймзона. Пример: <code>Europe/Moscow</code> или <code>Asia/Almaty</code>.",
+                    )
+                    return
+                state["reminder_timezone"] = text
+                self.save_state(state)
+            session.step = "balance_charge_time"
+            self.prompt_current_step(message.chat.id, session)
+            return
+
         if text not in {"", "-", SKIP_BUTTON}:
-            try:
-                ZoneInfo(text)
-            except Exception:
-                self.send_html(
-                    message.chat.id,
-                    "Неверная таймзона. Пример: <code>Europe/Moscow</code> или <code>Asia/Almaty</code>.",
-                )
+            if not is_valid_time_hhmm(text):
+                self.send_html(message.chat.id, "Введите время списания в формате <code>HH:MM</code>, например <code>00:00</code>.")
                 return
-            state["reminder_timezone"] = text
+            state["balance_charge_time"] = text
             self.save_state(state)
         self.sessions.pop(message.chat.id, None)
         state = self.state()
@@ -838,8 +859,9 @@ class RentNotifierBot:
             message.chat.id,
             "✅ Настройки напоминаний обновлены.\n\n"
             f"• Дни: <code>{state['reminder_days']}</code>\n"
-            f"• Время: <code>{state.get('reminder_time', '09:00')}</code>\n"
-            f"• Таймзона: <code>{state.get('reminder_timezone', self.settings.timezone)}</code>",
+            f"• Время уведомлений: <code>{state.get('reminder_time', '09:00')}</code>\n"
+            f"• Таймзона: <code>{state.get('reminder_timezone', self.settings.timezone)}</code>\n"
+            f"• Время списания баланса: <code>{state.get('balance_charge_time', '00:00')}</code>",
             reply_markup=settings_keyboard(),
         )
 

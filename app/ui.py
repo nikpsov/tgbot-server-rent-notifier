@@ -129,13 +129,16 @@ def settings_keyboard() -> types.ReplyKeyboardMarkup:
     return kb
 
 
-def settings_text(owner_id: int, reminder_days: int, reminder_time: str, reminder_timezone: str) -> str:
+def settings_text(
+    owner_id: int, reminder_days: int, reminder_time: str, reminder_timezone: str, balance_charge_time: str
+) -> str:
     return (
         "⚙️ <b>Настройки</b>\n\n"
         f"Owner ID: <code>{owner_id}</code>\n"
         f"Общее напоминание: <code>{reminder_days}</code> дн.\n"
         f"Время уведомлений: <code>{escape(reminder_time)}</code>\n"
         f"Таймзона уведомлений: <code>{escape(reminder_timezone)}</code>\n"
+        f"Время списания баланса: <code>{escape(balance_charge_time)}</code>\n"
         "Доступ к управлению есть у owner и администраторов."
     )
 
@@ -210,7 +213,11 @@ def server_text(server_id: str, server: dict[str, Any]) -> str:
 
     lk_balance_raw = str(server.get("lk_balance") or "").strip()
     if lk_balance_raw:
-        lines.append(f"• Баланс ЛК: <b>{escape(lk_balance_raw)}</b>")
+        balance_updated_on = str(server.get("balance_updated_on") or "").strip()
+        if balance_updated_on:
+            lines.append(f"• Баланс ЛК ({format_date(balance_updated_on)}): <b>{escape(lk_balance_raw)}</b>")
+        else:
+            lines.append(f"• Баланс ЛК: <b>{escape(lk_balance_raw)}</b>")
 
     lk_topup_url = str(server.get("lk_topup_url") or "").strip()
     if lk_topup_url:
