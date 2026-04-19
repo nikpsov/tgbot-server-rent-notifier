@@ -911,12 +911,14 @@ class RentNotifierBot:
             return
         for recipient in state["recipients"]:
             chat_id = int(recipient["chat_id"])
+            chat_type = str(recipient.get("type") or "unknown")
+            can_manage_from_message = chat_type == "private" and chat_id in {int(item) for item in state["admins"]}
             for server_id, server in due_servers:
                 try:
                     self.send_html(
                         chat_id,
                         f"{WARN_EMOJI} <b>Скоро оплата</b>\n\n{server_text(server_id, server)}",
-                        reply_markup=server_keyboard(server_id),
+                        reply_markup=server_keyboard(server_id) if can_manage_from_message else None,
                     )
                 except Exception as exc:
                     self.logger.warning("Failed to send notification to %s: %s", chat_id, exc)
