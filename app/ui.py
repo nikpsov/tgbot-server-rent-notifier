@@ -14,6 +14,15 @@ PERSON_EMOJI = '<tg-emoji emoji-id="5275979556308674886">👤</tg-emoji>'
 PEOPLE_EMOJI = '<tg-emoji emoji-id="5298668674532538341">👥</tg-emoji>'
 LINK_EMOJI = '<tg-emoji emoji-id="5278305362703835500">🔗</tg-emoji>'
 DELETE_EMOJI = '<tg-emoji emoji-id="5276384644739129761">🗑</tg-emoji>'
+PERIOD_EMOJI = '<tg-emoji emoji-id="5276412364458059956">⏱️</tg-emoji>'
+BANK_EMOJI = '<tg-emoji emoji-id="5276398496008663230">🏦</tg-emoji>'
+MONEY_EMOJI = '<tg-emoji emoji-id="5255806447106679302">💰</tg-emoji>'
+HOME_EMOJI = '<tg-emoji emoji-id="5278413853577734640">🏠</tg-emoji>'
+GLOBE_EMOJI = '<tg-emoji emoji-id="5276381204470329471">🌐</tg-emoji>'
+BUILDING_EMOJI = '<tg-emoji emoji-id="5278528159837348960">🏢</tg-emoji>'
+NO_ENTRY_EMOJI = '<tg-emoji emoji-id="5278578973595427038">⛔</tg-emoji>'
+WORLD_EMOJI = '<tg-emoji emoji-id="5206202791768393003">🌍</tg-emoji>'
+CHECK_EMOJI = '<tg-emoji emoji-id="5276220667182736079">✅</tg-emoji>'
 
 
 MAIN_MENU_BUTTONS = [
@@ -197,21 +206,21 @@ def server_text(server_id: str, server: dict[str, Any]) -> str:
 
     hosting_raw = str(server.get("hosting_name") or "").strip()
     if hosting_raw:
-        lines.append(f"• Хостинг: <b>{escape(hosting_raw)}</b>")
+        lines.append(f"• {BUILDING_EMOJI} Хостинг: <b>{escape(hosting_raw)}</b>")
 
     ip_raw = str(server.get("ip_address") or "").strip()
     if ip_raw:
-        lines.append(f"• IP: <code>{escape(ip_raw)}</code>")
+        lines.append(f"• {GLOBE_EMOJI} IP: <code>{escape(ip_raw)}</code>")
 
     pt = server.get("period_type")
     if pt == "monthly":
-        lines.append(f"• Период: <code>{escape('ежемесячно (30 дней)')}</code>")
+        lines.append(f"• {PERIOD_EMOJI} Период: <code>{escape('ежемесячно (30 дней)')}</code>")
     elif pt == "daily":
-        lines.append(f"• Период: <code>{escape('ежедневно')}</code>")
+        lines.append(f"• {PERIOD_EMOJI} Период: <code>{escape('ежедневно')}</code>")
 
     amount_raw = str(server.get("payment_amount") or "").strip()
     if amount_raw:
-        lines.append(f"• Сумма списания: <b>{escape(amount_raw)}</b>")
+        lines.append(f"• {MONEY_EMOJI} Сумма списания: <b>{escape(amount_raw)}</b>")
 
     npd_raw = str(server.get("next_payment_date") or "").strip()
     if npd_raw:
@@ -225,9 +234,9 @@ def server_text(server_id: str, server: dict[str, Any]) -> str:
     if lk_balance_raw:
         balance_updated_on = str(server.get("balance_updated_on") or "").strip()
         if balance_updated_on:
-            lines.append(f"• Баланс ЛК ({format_date(balance_updated_on)}): <b>{escape(lk_balance_raw)}</b>")
+            lines.append(f"• {BANK_EMOJI} Баланс ЛК ({format_date(balance_updated_on)}): <b>{escape(lk_balance_raw)}</b>")
         else:
-            lines.append(f"• Баланс ЛК: <b>{escape(lk_balance_raw)}</b>")
+            lines.append(f"• {BANK_EMOJI} Баланс ЛК: <b>{escape(lk_balance_raw)}</b>")
 
     lk_topup_url = str(server.get("lk_topup_url") or "").strip()
     if lk_topup_url:
