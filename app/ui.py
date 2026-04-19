@@ -92,6 +92,20 @@ def server_keyboard(server_id: str) -> types.InlineKeyboardMarkup:
     return kb
 
 
+def server_list_keyboard(servers: list[tuple[str, dict[str, Any]]]) -> types.InlineKeyboardMarkup:
+    kb = types.InlineKeyboardMarkup()
+    for server_id, server in servers:
+        name = str(server.get("name") or server_id).strip() or server_id
+        period_type = str(server.get("period_type") or "monthly")
+        due_raw = str(server.get("covered_until") if period_type == "daily" else server.get("next_payment_date") or "").strip()
+        suffix = f" • {format_date(due_raw)}" if due_raw else ""
+        text = f"{name}{suffix}"
+        if len(text) > 60:
+            text = text[:57] + "..."
+        kb.add(types.InlineKeyboardButton(text, callback_data=f"server_show_{server_id}"))
+    return kb
+
+
 def delete_confirm_keyboard(server_id: str) -> types.InlineKeyboardMarkup:
     kb = types.InlineKeyboardMarkup()
     kb.row(

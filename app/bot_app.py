@@ -54,6 +54,7 @@ from app.ui import (
     recipients_manage_keyboard,
     server_edit_keyboard,
     server_keyboard,
+    server_list_keyboard,
     server_text,
     settings_keyboard,
     settings_text,
@@ -126,6 +127,10 @@ class RentNotifierBot:
         @self.bot.callback_query_handler(func=lambda call: call.data.startswith("edit_"))
         def edit_cb(call: types.CallbackQuery) -> None:
             self.handle_edit_start(call)
+
+        @self.bot.callback_query_handler(func=lambda call: call.data.startswith("server_show_"))
+        def server_show_cb(call: types.CallbackQuery) -> None:
+            self.handle_server_show(call)
 
         @self.bot.callback_query_handler(func=lambda call: call.data.startswith("recipient_del_"))
         def recipient_cb(call: types.CallbackQuery) -> None:
@@ -207,13 +212,29 @@ class RentNotifierBot:
     def handle_list(self, message: types.Message) -> None:
         if self.reject_non_admin(message):
             return
-        servers = self.state()["servers"]
+        state = self.state()
+        servers = state["servers"]
         if not servers:
             self.send_html(message.chat.id, "📭 Список серверов пуст.", reply_markup=main_menu_keyboard())
             return
-        self.send_html(message.chat.id, "📋 <b>Список серверов</b>", reply_markup=main_menu_keyboard())
-        for server_id, server in servers.items():
-            self.send_html(message.chat.id, server_text(server_id, server), reply_markup=server_keyboard(server_id))
+        today = dt.date.today()
+        due_servers = self.collect_due_servers(state, today, ignore_last_notified=True)
+        due_server_ids = {server_id for server_id, _ in due_servers}
+        ordered_servers = sorted(
+            servers.items(),
+            key=lambda item: (
+                0 if item[0] in due_server_ids else 1,
+                str(item[1].get("name") or item[0]).lower(),
+            ),
+        )
+        self.send_html(
+            message.chat.id,
+            "📋 <b>Список серверов</b>\n\n"
+            f"Всего серверов: <b>{len(servers)}</b>\n"
+            f"Требуют ближайшей оплаты: <b>{len(due_servers)}</b>\n\n"
+            "Выберите сервер кнопкой ниже, чтобы открыть полную карточку.",
+            reply_markup=server_list_keyboard(ordered_servers),
+        )
 
     def handle_delete_command(self, message: types.Message) -> None:
         if self.reject_non_admin(message):
@@ -549,7 +570,7 @@ class RentNotifierBot:
             state["servers"][server_id] = server_data
             self.save_state(state)
             self.sessions.pop(message.chat.id, None)
-                self.send_html(message.chat.id, f"{CHECK_EMOJI} Сервер добавлен.\n\n{server_text(server_id, server_data)}", reply_markup=main_menu_keyboard())
+            self.send_html(message.chat.id, f"{CHECK_EMOJI} Сервер добавлен.\n\n{server_text(server_id, server_data)}", reply_markup=main_menu_keyboard())
 
     def handle_edit_start(self, call: types.CallbackQuery) -> None:
         if self.reject_non_admin(call):
@@ -563,6 +584,22 @@ class RentNotifierBot:
         self.sessions[actor_id] = SessionState(flow="edit", step="field", payload={"server_id": server_id})
         self.bot.answer_callback_query(call.id, "Открываю редактирование")
         self.prompt_current_step(actor_id, self.sessions[actor_id])
+
+    def handle_server_show(self, call: types.CallbackQuery) -> None:
+        if self.reject_non_admin(call):
+            return
+        server_id = call.data.removeprefix("server_show_")
+        state = self.state()
+        server = state["servers"].get(server_id)
+        if not server:
+            self.bot.answer_callback_query(call.id, "Сервер не найден")
+            return
+        self.bot.answer_callback_query(call.id, "Открываю сервер")
+        self.send_html(
+            call.message.chat.id,
+            server_text(server_id, server),
+            reply_markup=server_keyboard(server_id),
+        )
 
     def handle_edit_flow(self, message: types.Message, session: SessionState) -> None:
         text = (message.text or "").strip()
