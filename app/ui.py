@@ -6,6 +6,16 @@ from telebot import types
 from app.services import format_date
 
 
+ADD_EMOJI = '<tg-emoji emoji-id="5242329690135356589">➕</tg-emoji>'
+EDIT_EMOJI = '<tg-emoji emoji-id="5276314275994954605">✏️</tg-emoji>'
+WARN_EMOJI = '<tg-emoji emoji-id="5276240711795107620">⚠️</tg-emoji>'
+NOTIFY_EMOJI = '<tg-emoji emoji-id="5206222720416643915">🔔</tg-emoji>'
+PERSON_EMOJI = '<tg-emoji emoji-id="5275979556308674886">👤</tg-emoji>'
+PEOPLE_EMOJI = '<tg-emoji emoji-id="5298668674532538341">👥</tg-emoji>'
+LINK_EMOJI = '<tg-emoji emoji-id="5278305362703835500">🔗</tg-emoji>'
+DELETE_EMOJI = '<tg-emoji emoji-id="5276384644739129761">🗑</tg-emoji>'
+
+
 MAIN_MENU_BUTTONS = [
     "➕ Добавить сервер",
     "📋 Список серверов",
@@ -169,7 +179,7 @@ def recipient_title(item: dict[str, Any]) -> str:
     except (TypeError, ValueError, KeyError):
         chat_id = 0
     chat_type = str(item.get("type") or "unknown")
-    icon = "👤" if chat_type == "private" else "👥"
+    icon = PERSON_EMOJI if chat_type == "private" else PEOPLE_EMOJI
     href = recipient_link_href(chat_id, chat_type)
     if href:
         name_html = f'<a href="{href}">{escape(raw_title)}</a>'

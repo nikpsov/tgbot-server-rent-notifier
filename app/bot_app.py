@@ -22,10 +22,17 @@ from app.services import (
 )
 from app.storage import Storage
 from app.ui import (
+    ADD_EMOJI,
     BACK_BUTTON,
     CANCEL_BUTTON,
+    DELETE_EMOJI,
+    EDIT_EMOJI,
+    LINK_EMOJI,
     MAIN_MENU_BUTTONS,
+    NOTIFY_EMOJI,
+    PEOPLE_EMOJI,
     SKIP_BUTTON,
+    WARN_EMOJI,
     admins_keyboard,
     admins_manage_keyboard,
     cancel_keyboard,
@@ -210,11 +217,11 @@ class RentNotifierBot:
         state = self.state()
         server = state["servers"].get(server_id)
         if not server:
-            self.send_html(message.chat.id, f"⚠️ Сервер <code>{server_id}</code> не найден.")
+            self.send_html(message.chat.id, f"{WARN_EMOJI} Сервер <code>{server_id}</code> не найден.")
             return
         self.send_html(
             message.chat.id,
-            f"🗑 Подтвердите удаление сервера:\n\n{server_text(server_id, server)}",
+            f"{DELETE_EMOJI} Подтвердите удаление сервера:\n\n{server_text(server_id, server)}",
             reply_markup=delete_confirm_keyboard(server_id),
         )
 
@@ -230,7 +237,7 @@ class RentNotifierBot:
             if target_chat is None:
                 self.send_html(
                     message.chat.id,
-                    "⚠️ Не удалось найти получателя. Используйте <code>chat_id</code> или <code>@username</code>, который видит бот.",
+                    f"{WARN_EMOJI} Не удалось найти получателя. Используйте <code>chat_id</code> или <code>@username</code>, который видит бот.",
                     reply_markup=main_menu_keyboard() if message.chat.type == "private" else None,
                 )
                 return
@@ -245,7 +252,7 @@ class RentNotifierBot:
         self.save_state(state)
         self.send_html(
             message.chat.id,
-            "🔔 Получатель подключён к уведомлениям.\n\n"
+            f"{NOTIFY_EMOJI} Получатель подключён к уведомлениям.\n\n"
             f"{recipient_title(recipient)}\n\n"
             "Напоминания об оплате будут приходить сюда автоматически.",
             reply_markup=main_menu_keyboard() if message.chat.type == "private" else None,
@@ -329,7 +336,7 @@ class RentNotifierBot:
                 return
             self.send_html(
                 message.chat.id,
-                "🔗 <b>Как подключить чат или канал</b>\n\n"
+                f"{LINK_EMOJI} <b>Как подключить чат или канал</b>\n\n"
                 "1. Добавьте бота в нужный чат или канал.\n"
                 "2. Выдайте право писать сообщения, если это канал.\n"
                 "3. Отправьте там <code>/register</code>.\n\n"
@@ -386,7 +393,7 @@ class RentNotifierBot:
     def prompt_current_step(self, chat_id: int, session: SessionState) -> None:
         if session.flow == "add":
             prompts = {
-                "name": "➕ <b>Новый сервер</b>\n\nВведите имя сервера.",
+                "name": f"{ADD_EMOJI} <b>Новый сервер</b>\n\nВведите имя сервера.",
                 "period_type": "⏱ Выберите тип периода.",
                 "payment_amount": (
                     "💰 Введите сумму списания за период "
@@ -395,7 +402,7 @@ class RentNotifierBot:
                 ),
                 "next_payment_date": "📆 Введите дату следующей оплаты в формате <code>dd.mm.yyyy</code>.",
                 "lk_balance": "🏦 Введите текущий баланс ЛК (число) или нажмите пропуск.",
-                "lk_topup_url": "🔗 Введите ссылку на ЛК для пополнения или нажмите пропуск.",
+                "lk_topup_url": f"{LINK_EMOJI} Введите ссылку на ЛК для пополнения или нажмите пропуск.",
             }
             if session.step == "period_type":
                 self.send_html(chat_id, prompts["period_type"], reply_markup=period_keyboard())
@@ -411,15 +418,15 @@ class RentNotifierBot:
         if session.flow == "edit":
             server_id = str(session.payload["server_id"])
             if session.step == "field":
-                self.send_html(chat_id, f"✏️ Что изменить у сервера <code>{server_id}</code>?", reply_markup=server_edit_keyboard(server_id))
+                self.send_html(chat_id, f"{EDIT_EMOJI} Что изменить у сервера <code>{server_id}</code>?", reply_markup=server_edit_keyboard(server_id))
                 return
             prompts = {
-                "name": "✏️ Введите новое имя сервера.",
+                "name": f"{EDIT_EMOJI} Введите новое имя сервера.",
                 "hosting_name": "🏢 Введите название хостинга или <code>-</code>, чтобы очистить поле.",
                 "ip_address": "🌐 Введите новый IP или <code>-</code>, чтобы очистить поле.",
                 "payment_amount": "💰 Введите новую сумму списания (число) или <code>-</code>, чтобы убрать значение.",
                 "lk_balance": "🏦 Введите новый баланс ЛК (число) или <code>-</code>, чтобы убрать значение.",
-                "lk_topup_url": "🔗 Введите новую ссылку ЛК или <code>-</code>, чтобы убрать значение.",
+                "lk_topup_url": f"{LINK_EMOJI} Введите новую ссылку ЛК или <code>-</code>, чтобы убрать значение.",
                 "next_payment_date": "📆 Введите новую дату в формате <code>dd.mm.yyyy</code>.",
             }
             if session.step == "period_type":
@@ -431,7 +438,7 @@ class RentNotifierBot:
         if session.flow == "admin":
             self.send_html(
                 chat_id,
-                "👥 Введите chat_id нового администратора.\n\nOwner добавляется из ENV автоматически.",
+                f"{PEOPLE_EMOJI} Введите chat_id нового администратора.\n\nOwner добавляется из ENV автоматически.",
                 reply_markup=cancel_keyboard(),
             )
             return
@@ -464,7 +471,7 @@ class RentNotifierBot:
                 return
             self.send_html(
                 chat_id,
-                "🔔 <b>Настройки напоминаний</b>\n\n"
+                f"{NOTIFY_EMOJI} <b>Настройки напоминаний</b>\n\n"
                 f"Текущее значение дней: <code>{state['reminder_days']}</code>\n"
                 f"Текущее время: <code>{state.get('reminder_time', '09:00')}</code>\n"
                 f"Текущая таймзона: <code>{state.get('reminder_timezone', self.settings.timezone)}</code>\n"
@@ -556,7 +563,7 @@ class RentNotifierBot:
         server = state["servers"].get(server_id)
         if not server:
             self.sessions.pop(message.chat.id, None)
-            self.send_html(message.chat.id, "⚠️ Сервер уже не существует.", reply_markup=main_menu_keyboard())
+            self.send_html(message.chat.id, f"{WARN_EMOJI} Сервер уже не существует.", reply_markup=main_menu_keyboard())
             return
 
         if session.step == "field":
@@ -665,7 +672,7 @@ class RentNotifierBot:
         self.bot.edit_message_text(
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
-            text=f"🗑 Подтвердите удаление сервера:\n\n{server_text(server_id, server)}",
+            text=f"{DELETE_EMOJI} Подтвердите удаление сервера:\n\n{server_text(server_id, server)}",
             parse_mode="HTML",
             reply_markup=delete_confirm_keyboard(server_id),
         )
@@ -684,7 +691,7 @@ class RentNotifierBot:
         self.bot.edit_message_text(
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
-            text=f"🗑 Сервер удалён: <b>{escape(str(server['name']))}</b> (<code>{server_id}</code>)",
+            text=f"{DELETE_EMOJI} Сервер удалён: <b>{escape(str(server['name']))}</b> (<code>{server_id}</code>)",
             parse_mode="HTML",
         )
 
@@ -712,7 +719,7 @@ class RentNotifierBot:
         state = self.state()
         self.send_html(
             message.chat.id,
-            "🔔 <b>Получатели уведомлений</b>\n\n"
+            f"{NOTIFY_EMOJI} <b>Получатели уведомлений</b>\n\n"
             "Добавление работает командой <code>/register</code> в нужном чате или канале, "
             "либо через <code>/register &lt;chat_id|@username&gt;</code> из лички.",
             reply_markup=recipients_keyboard(),
@@ -738,7 +745,7 @@ class RentNotifierBot:
         self.bot.edit_message_text(
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
-            text=f"🗑 Получатель <code>{chat_id}</code> удалён.",
+            text=f"{DELETE_EMOJI} Получатель <code>{chat_id}</code> удалён.",
             parse_mode="HTML",
         )
 
@@ -747,7 +754,7 @@ class RentNotifierBot:
             return
         state = self.state()
         keyboard = admins_keyboard() if self.is_owner(self.extract_actor_chat_id(message)) else main_menu_keyboard()
-        self.send_html(message.chat.id, "👥 <b>Администраторы</b>", reply_markup=keyboard)
+        self.send_html(message.chat.id, f"{PEOPLE_EMOJI} <b>Администраторы</b>", reply_markup=keyboard)
         for admin_id in state["admins"]:
             role = "owner" if admin_id == self.settings.owner_chat_id else "admin"
             self.send_html(
@@ -776,7 +783,7 @@ class RentNotifierBot:
         self.bot.edit_message_text(
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
-            text=f"🗑 Администратор <code>{admin_id}</code> удалён.",
+            text=f"{DELETE_EMOJI} Администратор <code>{admin_id}</code> удалён.",
             parse_mode="HTML",
         )
 
@@ -803,7 +810,7 @@ class RentNotifierBot:
         text = (message.text or "").strip()
         if session.step not in {"reminder_days", "reminder_time", "reminder_timezone", "balance_charge_time"}:
             self.sessions.pop(message.chat.id, None)
-            self.send_html(message.chat.id, "⚠️ Неизвестный шаг настроек.", reply_markup=main_menu_keyboard())
+            self.send_html(message.chat.id, f"{WARN_EMOJI} Неизвестный шаг настроек.", reply_markup=main_menu_keyboard())
             return
         state = self.state()
         if session.step == "reminder_days":
@@ -890,7 +897,7 @@ class RentNotifierBot:
         if not state["recipients"]:
             self.send_html(
                 self.settings.owner_chat_id,
-                "⚠️ Получатели уведомлений не настроены. Подключите чат или канал через <code>/register</code> или <code>/register &lt;chat_id|@username&gt;</code>.",
+                f"{WARN_EMOJI} Получатели уведомлений не настроены. Подключите чат или канал через <code>/register</code> или <code>/register &lt;chat_id|@username&gt;</code>.",
             )
             return
         for recipient in state["recipients"]:
@@ -899,7 +906,7 @@ class RentNotifierBot:
                 try:
                     self.send_html(
                         chat_id,
-                        f"⚠️ <b>Скоро оплата</b>\n\n{server_text(server_id, server)}",
+                        f"{WARN_EMOJI} <b>Скоро оплата</b>\n\n{server_text(server_id, server)}",
                         reply_markup=server_keyboard(server_id),
                     )
                 except Exception as exc:
