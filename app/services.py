@@ -1,4 +1,6 @@
 ﻿import datetime as dt
+import re
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 DATE_FMT = "%d.%m.%Y"
@@ -38,59 +40,166 @@ def calculate_next_date(server: dict[str, Any]) -> str:
     period_type = server.get("period_type")
     if period_type == "monthly":
         new_date = base_date + dt.timedelta(days=30)
+    elif period_type == "daily":
+        new_date = base_date + dt.timedelta(days=1)
     else:
-        custom_days = int(server.get("custom_days") or 0)
-        if custom_days <= 0:
-            raise ValueError("custom_days must be > 0")
-        new_date = base_date + dt.timedelta(days=custom_days)
+        raise ValueError("period_type must be monthly or daily")
     return new_date.strftime(DATE_FMT)
 
 
 def normalize_server_payload(payload: dict[str, Any]) -> dict[str, Any]:
     period_type = payload.get("period_type", "monthly")
-    if period_type not in {"monthly", "custom"}:
+    if period_type not in {"monthly", "daily"}:
         period_type = "monthly"
 
-    custom_days = payload.get("custom_days")
-    if period_type == "custom":
-        custom_days = int(custom_days)
-        if custom_days <= 0:
-            raise ValueError("custom_days must be > 0")
+    next_payment_date = str(payload.get("next_payment_date", "")).strip()
+    if period_type == "monthly":
+        if not parse_date(next_payment_date):
+            raise ValueError("invalid date format")
     else:
-        custom_days = None
-
-    reminder_days = int(payload.get("reminder_days", DEFAULT_REMINDER_DAYS))
-    if reminder_days < 0:
-        raise ValueError("reminder_days must be >= 0")
-
-    next_payment_date = str(payload.get("next_payment_date", ""))
-    if not parse_date(next_payment_date):
-        raise ValueError("invalid date format")
+        next_payment_date = ""
 
     name = str(payload.get("name", "")).strip()
     if not name:
         raise ValueError("name is empty")
 
     payment_amount = str(payload.get("payment_amount") or "").strip()
+    lk_balance = str(payload.get("lk_balance") or "").strip()
+    lk_topup_url = str(payload.get("lk_topup_url") or "").strip()
 
     return {
         "name": name,
+        "hosting_name": str(payload.get("hosting_name") or "").strip(),
         "ip_address": str(payload.get("ip_address") or "").strip(),
+        "period_type": period_type,
         "payment_amount": payment_amount,
         "next_payment_date": next_payment_date,
-        "period_type": period_type,
-        "custom_days": custom_days,
-        "reminder_days": reminder_days,
+        "covered_until": str(payload.get("covered_until") or "").strip(),
+        "lk_balance": lk_balance,
+        "balance_updated_on": str(payload.get("balance_updated_on") or "").strip(),
+        "lk_topup_url": lk_topup_url,
         "last_notified_on": str(payload.get("last_notified_on") or ""),
     }
 
 
-def due_for_reminder(server: dict[str, Any], today: dt.date) -> bool:
-    due_date = parse_date(str(server.get("next_payment_date", "")))
+def due_for_reminder(server: dict[str, Any], today: dt.date, reminder_days: int, ignore_last_notified: bool = False) -> bool:
+    period_type = str(server.get("period_type") or "monthly")
+    due_date_raw = str(server.get("next_payment_date") or "").strip()
+    if period_type == "daily":
+        due_date_raw = str(server.get("covered_until") or "").strip()
+    due_date = parse_date(due_date_raw)
     if not due_date:
         return False
-    reminder_days = int(server.get("reminder_days") or DEFAULT_REMINDER_DAYS)
     last_notified_on = parse_date(str(server.get("last_notified_on", "")))
-    if last_notified_on == today:
+    if not ignore_last_notified and last_notified_on == today:
         return False
     return today + dt.timedelta(days=reminder_days) >= due_date
+
+
+def parse_decimal_value(raw: Any) -> Decimal | None:
+    text = str(raw or "").strip().replace(",", ".")
+    if not text:
+        return None
+    try:
+        value = Decimal(text)
+    except InvalidOperation:
+        return None
+    if value < 0:
+        return None
+    return value
+
+
+def balance_coverage_until(server: dict[str, Any], today: dt.date | None = None) -> dt.date | None:
+    current_day = today or dt.date.today()
+    balance = parse_decimal_value(server.get("lk_balance"))
+    amount = parse_decimal_value(server.get("payment_amount"))
+    period_type = str(server.get("period_type") or "monthly")
+    if balance is None or amount is None or amount <= 0:
+        return None
+
+    if period_type == "daily":
+        paid_days = int(balance // amount)
+        if paid_days <= 0:
+            return None
+        return current_day + dt.timedelta(days=paid_days - 1)
+
+    due_date = parse_date(str(server.get("next_payment_date", "")))
+    if not due_date:
+        return None
+    next_charge = due_date
+    remainder = balance
+    while remainder >= amount:
+        remainder -= amount
+        next_charge += dt.timedelta(days=30)
+    return next_charge - dt.timedelta(days=1)
+
+
+def balance_coverage_until_str(server: dict[str, Any], today: dt.date | None = None) -> str:
+    covered_until = balance_coverage_until(server, today=today)
+    if not covered_until:
+        return ""
+    return covered_until.strftime(DATE_FMT)
+
+
+TIME_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+
+
+def is_valid_time_hhmm(value: str) -> bool:
+    return bool(TIME_RE.match(value.strip()))
+
+
+def decimal_to_str(value: Decimal) -> str:
+    normalized = value.quantize(Decimal("0.01")).normalize()
+    text = format(normalized, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text or "0"
+
+
+def apply_periodic_balance_charge(server: dict[str, Any], today: dt.date | None = None) -> None:
+    current_day = today or dt.date.today()
+    balance = parse_decimal_value(server.get("lk_balance"))
+    amount = parse_decimal_value(server.get("payment_amount"))
+    period_type = str(server.get("period_type") or "monthly")
+    if balance is None or amount is None or amount <= 0:
+        return
+
+    updated_on_raw = str(server.get("balance_updated_on") or "").strip()
+    updated_on = parse_date(updated_on_raw)
+    if not updated_on:
+        server["balance_updated_on"] = current_day.strftime(DATE_FMT)
+        return
+    if updated_on >= current_day:
+        return
+
+    period_days = 1 if period_type == "daily" else 30
+    elapsed_days = (current_day - updated_on).days
+    periods_elapsed = elapsed_days // period_days
+    if periods_elapsed <= 0:
+        return
+
+    charge = amount * periods_elapsed
+    new_balance = balance - charge
+    if new_balance < 0:
+        new_balance = Decimal("0")
+    server["lk_balance"] = decimal_to_str(new_balance)
+    server["balance_updated_on"] = (updated_on + dt.timedelta(days=periods_elapsed * period_days)).strftime(DATE_FMT)
+
+
+def apply_periodic_balance_charge_with_time(
+    server: dict[str, Any],
+    charge_time: str,
+    now_local: dt.datetime | None = None,
+) -> None:
+    current_dt = now_local or dt.datetime.now()
+    if not is_valid_time_hhmm(charge_time):
+        apply_periodic_balance_charge(server, current_dt.date())
+        return
+
+    hour, minute = (int(part) for part in charge_time.split(":", 1))
+    current_anchor = dt.datetime.combine(current_dt.date(), dt.time(hour=hour, minute=minute))
+    if current_dt >= current_anchor:
+        effective_day = current_dt.date()
+    else:
+        effective_day = (current_dt - dt.timedelta(days=1)).date()
+    apply_periodic_balance_charge(server, effective_day)

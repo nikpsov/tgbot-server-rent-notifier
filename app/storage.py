@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from app.services import DEFAULT_REMINDER_DAYS
+from app.services import DEFAULT_REMINDER_DAYS, apply_periodic_balance_charge_with_time, balance_coverage_until_str
 
 
 class Storage:
@@ -35,38 +35,25 @@ class Storage:
 
     def _normalize_server(self, server: dict[str, Any]) -> dict[str, Any]:
         period_type = server.get("period_type")
-        if period_type not in {"monthly", "custom"}:
+        if period_type not in {"monthly", "daily"}:
             period_type = "monthly"
 
-        custom_days = server.get("custom_days")
-        if period_type == "custom":
-            try:
-                custom_days_int = int(custom_days)
-                if custom_days_int <= 0:
-                    custom_days_int = 30
-            except (TypeError, ValueError):
-                custom_days_int = 30
-            custom_days = custom_days_int
-        else:
-            custom_days = None
-
-        try:
-            reminder_days = int(server.get("reminder_days", DEFAULT_REMINDER_DAYS))
-            if reminder_days < 0:
-                reminder_days = DEFAULT_REMINDER_DAYS
-        except (TypeError, ValueError):
-            reminder_days = DEFAULT_REMINDER_DAYS
-
-        return {
+        normalized = {
             "name": str(server.get("name") or "Unnamed server"),
+            "hosting_name": str(server.get("hosting_name") or "").strip(),
             "ip_address": str(server.get("ip_address") or ""),
+            "period_type": period_type,
             "payment_amount": str(server.get("payment_amount") or "").strip(),
             "next_payment_date": str(server.get("next_payment_date") or ""),
-            "period_type": period_type,
-            "custom_days": custom_days,
-            "reminder_days": reminder_days,
+            "covered_until": str(server.get("covered_until") or "").strip(),
+            "lk_balance": str(server.get("lk_balance") or "").strip(),
+            "balance_updated_on": str(server.get("balance_updated_on") or "").strip(),
+            "lk_topup_url": str(server.get("lk_topup_url") or "").strip(),
             "last_notified_on": str(server.get("last_notified_on") or ""),
         }
+        apply_periodic_balance_charge_with_time(normalized, self._balance_charge_time)
+        normalized["covered_until"] = balance_coverage_until_str(normalized)
+        return normalized
 
     def _normalize_recipients(self, recipients: Any) -> list[dict[str, Any]]:
         normalized: list[dict[str, Any]] = []
@@ -107,6 +94,17 @@ class Storage:
         if not isinstance(raw, dict):
             raw = {}
 
+        try:
+            reminder_days = int(raw.get("reminder_days", DEFAULT_REMINDER_DAYS))
+            if reminder_days < 0:
+                reminder_days = DEFAULT_REMINDER_DAYS
+        except (TypeError, ValueError):
+            reminder_days = DEFAULT_REMINDER_DAYS
+        reminder_time = str(raw.get("reminder_time") or "09:00").strip() or "09:00"
+        reminder_timezone = str(raw.get("reminder_timezone") or "Europe/Moscow").strip() or "Europe/Moscow"
+        balance_charge_time = str(raw.get("balance_charge_time") or "00:00").strip() or "00:00"
+        self._balance_charge_time = balance_charge_time
+
         servers: dict[str, Any] = {}
         raw_servers = raw.get("servers")
         if isinstance(raw_servers, dict):
@@ -118,5 +116,9 @@ class Storage:
         return {
             "admins": self._normalize_admins(raw.get("admins")),
             "recipients": self._normalize_recipients(raw.get("recipients")),
+            "reminder_days": reminder_days,
+            "reminder_time": reminder_time,
+            "reminder_timezone": reminder_timezone,
+            "balance_charge_time": balance_charge_time,
             "servers": servers,
         }

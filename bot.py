@@ -8,7 +8,7 @@ from app.config import configure_logging, configure_timezone, load_settings
 
 
 def scheduler_worker(app: RentNotifierBot) -> None:
-    schedule.every().day.at("09:00").do(app.run_daily_check)
+    schedule.every(1).minutes.do(app.run_scheduled_check)
     while True:
         schedule.run_pending()
         time.sleep(1)
